@@ -19,7 +19,7 @@ fallback per failure.* A failed item with an armed fallback is a passing Phase 0
 | # | Item | Status |
 |---|---|---|
 | 1 | TrueForge launches and a model responds | ⏳ pending model API key |
-| 2 | A Rust `rmcp` HTTP MCP server connects and its tools are invocable | ✅ handshake PASS · invocation pending key |
+| 2 | A Rust `rmcp` HTTP MCP server connects and its tools are invocable | ✅ **PASS** (connect + enumerate + invoke) · agent-driven call pending key |
 | 3 | Sandbox can reach a Docker Compose container | ✅ **unblocked** — local sandbox available (see F1) |
 | 4 | Subagents spawn and return | ⏳ pending model API key |
 | 5 | A tool marked approval-required actually gates | ✅ mechanism confirmed · live test pending key |
@@ -127,9 +127,26 @@ GET /api/v1/mcp-servers/phase0-probe/tools
   probe_rollback  {service: string, to_version: string}  preload: true
 ```
 
+Direct `tools/call` over the streamable-HTTP transport executes and returns the
+engine's response contract intact:
+
+```
+POST /mcp  {"method":"tools/call","params":{"name":"probe_ping",
+                                            "arguments":{"message":"phase0 item2"}}}
+-> {"content":[{"type":"text","text":
+     "{\"echo\":\"phase0 item2\",\"engine_latency_ms\":0.004749,
+       \"ok\":true,\"source\":\"phase0-probe (rust/rmcp)\"}"}],
+    "isError":false}
+```
+
+**`engine_latency_ms: 0.004749`** — 4.7 microseconds round-trip inside the tool.
+That is the ADR-002 Rust argument made empirical rather than asserted, and it is
+the number the demo puts on screen at 0:45–1:30.
+
 The highest-risk integration seam — Rust `rmcp` against TrueForge's
-`@modelcontextprotocol/sdk` 1.29 — is crossed. Tool *invocation from a session*
-additionally requires a model, and is pending a key.
+`@modelcontextprotocol/sdk` 1.29 — is crossed: connect, enumerate, and invoke
+all work. Invocation *driven by an agent in a session* additionally requires a
+model, and is pending a key.
 
 ### F4. The approval gate is real, and can be driven programmatically ✅ (item 5)
 
@@ -263,6 +280,19 @@ indefensible if a judge asked.
 This makes the **Model Generalization Experiment** free of new code: Model A and
 Model B are provider/model strings in `bench/conditions/`, exactly as the spec
 required for the thesis to be testable.
+
+**Selected for this build:** Model A = `google-gemini/gemini-3.6-flash`,
+Model B = `google-gemini/gemini-3.1-pro-preview`. Flash is the cheapest capable
+option in the catalog, which matters because the baseline condition is designed
+to burn tokens — over-investigation is the phenomenon under study, and ADR-016
+deliberately removes the harness's compaction safety net. Cost per run is what
+buys repeats beyond n=3.
+
+**Watch item:** a cheaper model raises the risk that the baseline fails *so*
+early that the Phase 2 foil footage is uninformative (the demo's 0:10–0:30
+segment depends on the baseline visibly drowning, not instantly erroring). If
+that happens, the fix is to raise Model A, not to weaken the treatment — and it
+gets recorded, per ADR-012.
 
 ---
 
