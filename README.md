@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026.
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phase 0 and Phase 1 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -348,7 +348,7 @@ sequenceDiagram
 
 | Source | Transport | Format | Notes |
 |---|---|---|---|
-| Service logs | File tail (Compose volume) or `docker logs` follow | One JSON object per line | Required fields: `ts` (RFC3339, ms), `service`, `level`, `msg`. Optional: `req_id`, `route`, `status`, `latency_ms`, `stack`, `deploy_id` |
+| Service logs | File tail (Compose volume) or `docker logs` follow | One JSON object per line | Required fields: `ts` (RFC3339, ms), `service`, `instance`, `version`, `level`, `msg`. Optional: `req_id`, `route`, `status`, `latency_ms`, `stack`, `deploy_id`, `upstream`, `kind`/`headers`/`body` (request capture). *(`instance`/`version` added in Phase 1 for per-instance attribution — S5.)* |
 | Metrics | HTTP scrape every 2s | Prometheus text format | Counters + histograms per service: `requests_total`, `errors_total`, `latency_ms_bucket` |
 | Deploy events | JSONL journal written by the deployer | `{deploy_id, service, version, ts, actor}` | The highest-prior evidence class |
 | Traces | **Future / optional.** v0 stitches by `req_id` present in logs | — | Full OTel deliberately deferred (see What Not To Build) |
@@ -667,47 +667,43 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 ## Repository Structure
 
 ```
-spyglass/
-├── README.md                     # this document — the source of truth
-├── LICENSE                       # MIT
-├── justfile                      # just demo | just bench | just watch | just scenario s1 …
-├── docker-compose.yml            # target system + engine + (optional) hosted TrueForge
-├── spyglass.toml                 # engine config: bounds, weights, thresholds, windows
-├── Cargo.toml                    # workspace
+spyglass/                         ✓ built   ○ planned (phase)
+├── README.md                     ✓ this document — the source of truth
+├── LICENSE                       ✓ MIT
+├── justfile                      ✓ up | scenario s1 | watch | s1-check | validate   ○ demo (P3+) | bench (P10)
+├── docker-compose.yml            ✓ target system                                     ○ engine service (P3)
+├── .env.example                  ✓ model key, host ports
+├── spyglass.toml                 ○ engine config: bounds, weights, thresholds (P3)
+├── Cargo.toml                    ✓ workspace
 ├── crates/
-│   ├── spyglass-core/            # Event/Template/Changepoint/Evidence types, config, ids, digests
-│   ├── spyglass-ingest/          # log tailer, normalizer, metrics scraper, backpressure, segments
-│   ├── spyglass-index/           # template index, text index (or tantivy adapter), metric rings
-│   ├── spyglass-detect/          # Drain-style miner, novelty scorer, changepoint detectors
-│   ├── spyglass-rank/            # scoring, dedupe, bundle assembly, coverage stats
-│   ├── spyglass-mcp/             # rmcp server: read tools, bounds, eids, digests, self-metrics
-│   └── spyglass-cli/             # spyglass serve | ingest --replay | inspect | bench-support
-├── deployer/                     # mutating MCP server (rollback) + deploy CLI + journal (small; Rust or TS)
+│   ├── phase0-probe/             ✓ throwaway rmcp server that validated the MCP seam (deleted at P3)
+│   ├── spyglass-core/            ○ Event/Template/Changepoint/Evidence types, config, ids, digests (P3)
+│   ├── spyglass-ingest/          ○ log tailer, normalizer, metrics scraper, segments (P3)
+│   ├── spyglass-index/           ○ template index, text index, metric rings (P3)
+│   ├── spyglass-detect/          ○ Drain-style miner, novelty, changepoints (P4/P5)
+│   ├── spyglass-rank/            ○ scoring, dedupe, bundles (P6/P7)
+│   ├── spyglass-mcp/             ○ rmcp server: read tools, bounds, eids, digests (P3)
+│   └── spyglass-cli/             ○ spyglass serve | ingest --replay | inspect (P3)
+├── deployer/                     ✓ Rust CLI: init/deploy/rollback/current/journal; idempotent, TOCTOU-checked   ○ MCP wrapper (P3)
 ├── target-system/
-│   ├── gateway/  orders/  payments/    # small FastAPI services; payments has v1 & v2 images
-│   ├── loadgen/                        # async traffic generator, mixed payload classes
-│   └── compose fragments, Dockerfiles
-├── agent/
-│   ├── sop.md                    # lead investigator system prompt (the SOP)
-│   ├── subagents/                # log-analyst.md, metrics-analyst.md, change-analyst.md
-│   └── trueforge/                # harness config: models, MCP servers, approval-required tools
+│   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
+│   └── Dockerfile, requirements.txt                   ✓
+├── agent/                        ○ sop.md, analyst briefs, TrueForge agent manifests (P3)
 ├── scenarios/
-│   ├── SCHEMA.md                 # ground-truth format (root cause, expected eids, remediation, verify signal)
-│   ├── s1-payment-regression/    # inject.sh, ground-truth.yaml, noise profile
-│   ├── s2-timeout-cascade/  s3-redis-pressure/  s4-pool-leak/
-│   ├── s5-partial-replica/  s6-insufficient-evidence/
-├── bench/
-│   ├── runner/                   # TypeScript, TrueForge SDK: run condition × scenario × repeat
-│   ├── conditions/               # baseline.json (raw tools) | spyglass.json | ablation-no-novelty.json
-│   ├── results/                  # raw run JSON + generated tables (committed after runs)
-│   └── report.py                 # aggregates results → docs/benchmark.md tables
-├── ledger/                       # per-incident JSONL (gitignored except sample)
+│   ├── SCHEMA.md                 ✓ ground-truth format
+│   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
+│   └── s2 … s6                   ○ (P10)
+├── bench/                        ○ runner, conditions, results, report.py (P10)
+├── ledger/                       ○ per-incident JSONL (P3)
 ├── docs/
-│   ├── architecture.md  benchmark.md  safety.md  demo.md
-│   ├── adr/ADR-001..015.md
-│   └── blog/draft.md             # grown incrementally from ADRs + build notes
-├── scripts/                      # record-demo.sh, sanity checks, watch dashboards
-└── .github/workflows/ci.yml      # fmt, clippy, tests, s1 smoke (compose up → inject → engine asserts)
+│   ├── README.md motivation.md architecture.md progress.md     ✓
+│   ├── phase0-findings.md phase1-findings.md                    ✓ per-phase records
+│   ├── safety.md benchmark.md demo.md                           ✓ scaffolds, filled by their phases
+│   ├── adr/                      ✓ 001 002 003 015 016 017 in full; the rest indexed, expanded when confronted
+│   └── blog/draft.md             ✓ grown incrementally
+├── scripts/                      ✓ env, no-root installers, trueforge.sh, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
+├── data/                         · runtime only, gitignored: logs, deploy state, scenario run snapshots
+└── .github/workflows/ci.yml      ○ fmt, clippy, tests, s1 smoke (P11)
 ```
 
 Every directory has exactly one responsibility; anything that wants to live in two places is a design smell to resolve in a PR, not in ambiguity.

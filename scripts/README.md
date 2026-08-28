@@ -1,0 +1,20 @@
+# scripts
+
+| Script | What | Needs |
+|---|---|---|
+| `env.sh` | `source` it: Node 22 + `~/.local/bin` on PATH, `SQLITE_PATH` inside the repo, `TRUEFORGE_URL` | — |
+| `install-node22.sh` | official Node 22 tarball, SHASUMS-verified, into `~/.local/node-v22` | no root |
+| `install-sandbox-deps.sh` | `rg` (prebuilt) + `socat` (from source) into `~/.local`, for TrueForge's local sandbox | no root; `bwrap` from the distro |
+| `install-just.sh` | `just` prebuilt into `~/.local/bin` | no root |
+| `trueforge.sh` | `start / stop / status / logs` the harness; finds the PID by port, never `pkill -f` | env.sh |
+| `configure-model.sh` | register (or rotate) the model provider from `.env`; idempotent (`PUT`) | `.env` with `MODEL_PROVIDER`, `MODEL_API_KEY` |
+| `tf.py` | stdlib REST driver: sessions, turns, polling, approvals, cross-thread token totals — the seed of the bench runner | harness up |
+| `watch.py` | error-rate dashboard + threshold alert; opens a TrueForge session on alert (`--no-session` to disable) | stack up; `.env` for `GATEWAY_PORT`, `SPYGLASS_AGENT` |
+| `s1-curve.py` | error-rate curve for a run; `--compare` two runs against ground-truth tolerances | run snapshots in `data/scenarios/s1/` |
+| `validate-ground-truth.py` | check `ground-truth.yaml` files against `scenarios/SCHEMA.md` | PyYAML |
+
+Facts these encode that the TrueForge docs do not state (Phase 0): a turn's
+status is `state.status`; `stream:false` returns the running turn; a gated turn
+ends `done` with `output: null` and the ask in `state.required_actions`; a
+turn's `usage` is its last model call only — `tf.usage_total()` sums across
+threads.

@@ -10,11 +10,14 @@ the running record of decisions and findings.
 |---|---|
 | [`motivation.md`](motivation.md) | **Start here.** Why this project exists, what problem it attacks, and what would prove it wrong. |
 | [`architecture.md`](architecture.md) | How the evidence plane is built, component by component. |
+| [`progress.md`](progress.md) | Where the build is against the spec's calendar; open decisions; drop order. |
 | [`phase0-findings.md`](phase0-findings.md) | What we actually verified about the TrueForge harness, and where reality diverged from the spec. |
+| [`phase1-findings.md`](phase1-findings.md) | The incident environment: what was built, what was measured, what pushed back. |
 | [`adr/`](adr/) | Individual decision records — context, alternatives, why rejected, reversal conditions. |
 | [`safety.md`](safety.md) | The safety model: read/write separation, injection defence, approval gate. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |
 | [`demo.md`](demo.md) | Shot list and per-segment commands. |
+| [`blog/draft.md`](blog/draft.md) | The hackathon blog post, grown from build notes as they happen. |
 | [`../scenarios/SCHEMA.md`](../scenarios/SCHEMA.md) | Ground-truth format; each scenario's README carries its measured acceptance evidence. |
 
 ## Conventions

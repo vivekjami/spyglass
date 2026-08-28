@@ -14,7 +14,9 @@ like one.
 | [001](ADR-001-an-evidence-layer-exists.md) | An evidence layer exists | The founding bet; everything else follows from it |
 | [002](ADR-002-rust-for-the-engine.md) | Rust for the engine | Exercised in Phase 0 — `rmcp` interop was item 2 |
 | [003](ADR-003-mcp-as-the-tool-boundary.md) | MCP as the tool boundary | Exercised in Phase 0; transport question settled by F2 |
+| [015](ADR-015-scenario-corpus-and-bench-are-durable.md) | Scenario corpus and bench harness are durable artifacts | Confronted in Phase 1 — `scenarios/` built |
 | [016](ADR-016-harness-context-management-pinning.md) | Pin harness context-management flags | **New**, forced by a Phase 0 discovery (F7) |
+| [017](ADR-017-routing-by-file-versions-always-on.md) | A deploy is a file write; every version always on | **New**, Phase 1 design decision |
 
 ## Recorded in the README, expanded when confronted
 
@@ -35,4 +37,3 @@ now would be backfilling in advance.
 | 012 | The baseline uses the same model | Phase 2 |
 | 013 | No custom frontend initially | Phase 11 |
 | 014 | No multi-tenancy, billing, or SaaS infrastructure | — (scope boundary) |
-| 015 | Scenario corpus and bench harness are durable artifacts | Phase 10 |
