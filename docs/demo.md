@@ -1,0 +1,24 @@
+# Demo plan
+
+**Status:** scaffold — shot list from the spec, per-segment commands filled in
+as each phase lands. Recorded across Phases 2, 9 and 11.
+
+≤3:00, **failure-first**. Each segment exists for a stated reason.
+
+| Time | Segment | On screen | Why it exists |
+|---|---|---|---|
+| 0:00–0:10 | Incident begins | green dashboard → `deploy payments v2` → error curve climbs | Stakes in 10 seconds |
+| 0:10–0:30 | Naive agent drowns | Phase-2 footage at 8× (labelled): raw log walls, repeated calls, token counter spinning | The foil — makes the thesis visible before it is argued |
+| 0:30–0:45 | The turn | one card: telemetry → evidence engine → shaped evidence → agent | The idea, once, in one breath |
+| 0:45–1:30 | Spyglass investigates | analysts fan out; `novel_templates` with `first_seen` and `engine_latency_ms`; changepoint +118s after D-77 | Evidence tools carrying the load |
+| 1:30–2:00 | Sandbox experiment | replay proportions v1 vs v2 | Correlation → causation; the intellectual peak |
+| 2:00–2:25 | Approval + rollback + verify | gate full-screen with cited eids → one human click → recovery curve | Control-and-safety, on camera |
+| 2:25–2:45 | The ledger | postmortem citing E1–E7; one `get_evidence(E3)` dereference | Auditability made concrete |
+| 2:45–3:00 | The numbers | baseline vs Spyglass table (measured values only) + repo end card | The claim settled by measurement |
+
+## Production rules
+
+- Baseline footage is captured in **Phase 2**, not reshot on Sunday.
+- Voiceover recorded separately from screen capture, two takes.
+- Every clip kept.
+- **If a segment's feature was dropped, the segment is cut — never faked.**

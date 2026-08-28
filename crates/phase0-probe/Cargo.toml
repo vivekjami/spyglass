@@ -1,0 +1,25 @@
+[package]
+name = "phase0-probe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Throwaway Phase 0 validation binary, NOT the Spyglass engine.
+# It exists to prove two things before any real engine code is written:
+#   1. a Rust `rmcp` streamable-HTTP server is reachable and invocable from a
+#      TrueForge session (Phase 0 item 2);
+#   2. `require_approval_for_tools` actually gates a mutating tool, and the
+#      approval can be granted programmatically (Phase 0 item 5).
+# Delete once crates/spyglass-mcp exists.
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
