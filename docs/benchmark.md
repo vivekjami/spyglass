@@ -50,6 +50,13 @@ useful hypothesis · false hypotheses · verification success.
 Engine-side, per condition: tool-call latency P50/P95/P99, bundle reduction
 ratio, bytes served to context.
 
+**How tokens are counted.** A turn's `state.output.usage` is the usage of its
+*final* model call only. Metrics 6–8 are therefore computed by summing
+`usage` over every `model.message` event in the turn's event stream, across
+the main thread and every sub-agent thread (`scripts/tf.py::usage_total`).
+Measured in Phase 0: a turn with one trivial sub-agent was 2745/197 tokens
+by the sum and 1340/30 by the turn-level field.
+
 ## Statistical honesty
 
 n=3 repeats per cell is a hackathon budget, not a study. Therefore:

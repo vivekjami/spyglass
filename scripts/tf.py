@@ -96,8 +96,36 @@ def output_text(t: dict) -> str:
 
 
 def usage(t: dict) -> dict:
-    """Token accounting for benchmark metrics 6-8. Present on a finished turn."""
+    """Usage of the turn's FINAL model call only -- see usage_total().
+
+    Measured in Phase 0: a turn with a sub-agent made three model calls
+    (main 1184/126, sub-thread 221/41, main 1340/30) and state.output.usage
+    reported just the last one. Do not feed this into the benchmark.
+    """
     return ((t.get("state") or {}).get("output") or {}).get("usage", {})
+
+
+def usage_total(evs: list[dict]) -> dict:
+    """Token accounting for benchmark metrics 6-8: sum every model call in the
+    turn, across all threads (main and every sub-agent thread)."""
+    tot = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+           "model_calls": 0, "threads": set()}
+    for e in evs:
+        u = e.get("usage")
+        if e.get("type") == "model.message" and u:
+            for k in ("input_tokens", "output_tokens", "cache_read_tokens"):
+                tot[k] += u.get(k, 0) or 0
+            tot["model_calls"] += 1
+            tot["threads"].add(e.get("thread_id"))
+    tot["threads"] = sorted(str(x) for x in tot["threads"])
+    return tot
+
+
+def tool_calls(evs: list[dict]) -> list[str]:
+    """Benchmark metric 5. With preload:true this counts only the agent's own
+    tool use; without it, harness list_tools/get_tool_info calls leak in."""
+    return [tc["function"]["name"] for e in evs if e.get("type") == "model.message"
+            for tc in (e.get("tool_calls") or [])]
 
 
 def turn_with_retry(session_id: str, items: list[dict], attempts: int = 6,

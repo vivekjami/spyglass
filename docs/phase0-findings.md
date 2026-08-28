@@ -21,11 +21,11 @@ fallback per failure.* A failed item with an armed fallback is a passing Phase 0
 | 1 | TrueForge launches and a model responds | ✅ **PASS** (F0) |
 | 2 | A Rust `rmcp` HTTP MCP server connects and its tools are invocable | ✅ **PASS** — connect, enumerate, invoke, and agent-driven invoke (F3) |
 | 3 | Sandbox can reach a Docker Compose container | ❌ **FAIL, fallback written** — isolated by design at two layers; harness allowlist hard-coded (F9) |
-| 4 | Subagents spawn and return | ⏳ **blocked by provider daily quota** — unverified (F11) |
-| 5 | A tool marked approval-required actually gates | ✅ **PASS** — live gate + programmatic allow (F4); deny schema-confirmed |
+| 4 | Subagents spawn and return | ✅ **PASS** — own thread, events visible on parent turn (F11) |
+| 5 | A tool marked approval-required actually gates | ✅ **PASS** — live gate; programmatic allow **and** deny (F4) |
 | 6 | *(added)* Programmatic session control for the benchmark runner | ✅ PASS |
 | 7 | *(added)* Benchmark-fairness flags identified and pinned | ✅ PASS (ADR-016; extended by F12) |
-| — | **Provider key viability** | ❌ **BLOCKER** — free tier is 20 requests/day (F10) |
+| — | **Provider key viability** | ✅ **resolved** — key rotated to a paid tier; 0 × 429 since (F10) |
 
 ---
 
@@ -216,9 +216,15 @@ useful for the S6 refusal scenario.
    input item executed the tool (`"executed":true,"simulated":true`) and the
    agent reported success.
 
-The **deny** path (`{"status":"deny","reason":"..."}`) is schema-confirmed but
-not live-tested: the run that would have exercised it is the one that hit the
-provider's daily quota (F10). It uses the identical resume mechanism.
+3. **Deny — PASS.** Resuming with `{"status":"deny","reason":"Phase 0 deny-path
+   test: rollback refused by operator."}`: the tool did **not** execute; the
+   agent received it as a tool *error* —
+   `{"error":"User denied tool call: Phase 0 deny-path test: …"}` — and
+   reported the refusal verbatim. The reason reaches the model intact, which
+   is what the S6 refuse/escalate scenario needs.
+
+With `preload: true` on the MCP server, the only call before the gate was
+`probe_rollback` — no `list_tools`/`get_tool_info`. F12's fix confirmed.
 
 ### F5. Subagents are dynamic, not statically defined ⚠️ spec divergence
 
@@ -435,20 +441,44 @@ Why this is a blocker, not an inconvenience:
   not a slow run; it is a lost run. `scripts/tf.py` has `turn_with_retry` for
   the runner, but it re-runs the whole turn — it cannot resume a dead one.
 
-Today's quota is exhausted; it resets at midnight Pacific (~12:30 IST
-Saturday), mid-build. **Decision needed:** enable billing on the Gemini project
-(pay-as-you-go lifts the daily cap and raises RPM into the hundreds), or supply
-a key for another catalog provider. The model *choice* stands — Flash is still
-the right cost/capability call — only the tier has to change.
+**Resolved the same evening.** The key was rotated to a paid-tier credential
+(`scripts/configure-model.sh` now uses `PUT` = create-or-replace, so a rotation
+is one command). A single-call probe returned `QUOTA_OK`; items 4 and 5-deny
+then ran back-to-back in parallel with zero 429s. The model choice stands.
 
-### F11. Subagents — blocked by provider quota, mechanism unverified ⏳ (item 4)
+The lesson is recorded because it will bite a judge too: the README's "any
+provider TrueForge supports" now says *on a paid tier*.
 
-One paced attempt (65 s wait; no MCP servers attached, to avoid deferred-loading
-round-trips; `dynamic_sub_agents.enabled: true`) plus two retries all failed on
-the daily quota (F10). The `create_sub_agent` built-in exists and is documented;
-whether it spawns, what it returns, and whether the sub-agent's thread events
-surface on the parent turn remain **unverified**. First thing to re-run once a
-usable key exists — a five-minute test.
+### F11. Subagents spawn, run on their own thread, and return ✅ (item 4)
+
+With `dynamic_sub_agents.enabled: true` and no MCP servers attached, the lead
+called the built-in and got the result back:
+
+```
+create_sub_agent {"name":"subagent_test","input":"Reply with exactly the text SUBAGENT_ALIVE and nothing else."}
+  thread.created   thread=01ba1c2f…
+  model.message    thread=01ba1c2f…   usage={"input_tokens":221,"output_tokens":41}
+  thread.done      thread=01ba1c2f…
+output: SUBAGENT_ALIVE
+```
+
+Facts that matter for the SOP and the benchmark:
+
+- **Signature:** `create_sub_agent(name, input)`. The lead writes the sub-agent's
+  entire brief as `input`. So the three analysts are *text the SOP tells the
+  lead to generate*, exactly as F5 predicted — and the budget line goes in
+  that text.
+- **Sub-agent events are on the parent turn's stream** with their own
+  `thread_id`, bracketed by `thread.created` / `thread.done`. The ledger writer
+  can attribute every tool call to a thread. Sub-agent tool calls will also be
+  visible there (none in this test — no tools attached).
+- **Token accounting trap.** The turn's `state.output.usage` is the usage of
+  the *final* model call only — here `1340/30`, when the turn actually made
+  three calls (main `1184/126`, sub-thread `221/41`, main `1340/30`; total
+  **2745 in / 197 out**). A runner that reads the turn-level number would
+  under-report tokens by ~2× on a turn with one trivial sub-agent, and far more
+  on a real fan-out. `scripts/tf.py::usage_total()` sums `model.message.usage`
+  across all threads; that is the only number that goes into metrics 6–8.
 
 ### F12. Deferred tool loading inflates the tool-call metric ⚠️
 
@@ -463,6 +493,9 @@ shaped ones. The MCP server spec has `preload: true` / `preload_tools: [...]`
 to inject schemas up front. **Pin `preload: true` in every condition** so the
 count measures the agent's investigation, not the harness's discovery — added
 to ADR-016 as the same class of confound.
+
+**Confirmed:** with `preload: true`, the deny-path run's only call before the
+gate was `probe_rollback` itself (F4). Metric 5 is clean under that setting.
 
 ---
 
@@ -507,3 +540,5 @@ curl -s localhost:8790/api/v1/mcp-servers/phase0-probe/tools   # expect 2 tools
 6. **Model tier** — a free-tier key cannot run the benchmark (F10). The README's
    "any provider TrueForge supports" needs the qualifier *on a paid tier*.
 7. **Tool preloading** — `preload: true` pinned in every condition (F12).
+8. **Token accounting** — metrics 6–8 must sum `model.message.usage` across
+   every thread of a turn; the turn-level `usage` is the last call only (F11).

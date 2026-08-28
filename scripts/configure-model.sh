@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Register a model provider with the running TrueForge instance.
+# Register (or rotate the key of) a model provider on the running TrueForge.
+# Idempotent: PUT is create-or-replace, so re-running after a key change is safe.
 #
 # Reads MODEL_PROVIDER / MODEL_API_KEY from .env (gitignored), so the key never
 # reaches shell history, the repo, or a command line in a screen recording.
@@ -50,7 +51,7 @@ import os, sys
 sys.stdout.write(sys.stdin.read().replace("__API_KEY__", os.environ["MODEL_API_KEY"]))' <<<"$payload")"
 
 code="$(printf '%s' "$body" | curl -s -o /tmp/tf-provider.out -w '%{http_code}' \
-  -X POST "$TRUEFORGE_URL/api/v1/settings/model-providers" \
+  -X PUT "$TRUEFORGE_URL/api/v1/settings/model-providers" \
   -H 'content-type: application/json' --data-binary @-)"
 
 if [ "$code" != "200" ] && [ "$code" != "201" ]; then
