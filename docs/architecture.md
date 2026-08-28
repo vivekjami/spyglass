@@ -32,7 +32,7 @@ this file never describes code that does not exist.
 | C6 | Evidence bundle generation (bounds, coverage, relationships) | Phase 7 | not started |
 | C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | probe validated (Phase 0) |
 | C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | not started |
-| C9 | Sandbox causal verification (exemplar replay) | Phase 8 | sandbox validated (Phase 0) |
+| C9 | Causal verification (exemplar replay) | Phase 8 | sandbox reach **failed** (Phase 0, F9) → replay-as-MCP-tool planned |
 | C10 | Human approval gate | Phase 9 | mechanism validated (Phase 0) |
 | C11 | Post-action verification loop | Phase 9 | not started |
 
@@ -51,8 +51,13 @@ Everything here was verified against TrueForge 0.1.4 — see
   `@read-only` selectors, which makes the benchmark's conditions and the
   novelty ablation pure config changes.
 - **Sandbox** runs locally via `@anthropic-ai/sandbox-runtime` (needs `bwrap`,
-  `socat`, `rg` on the host) — no Daytona cloud account, and local network
-  reach to the Compose stack.
+  `socat`, `rg` on the host) — no Daytona cloud account. It is
+  **network-isolated by design** and the harness's egress allowlist is
+  hard-coded, so it cannot reach the Compose stack (phase0-findings F9). The
+  causal replay therefore runs as a bounded MCP tool on the evidence plane.
+- **Tool loading**: deferred by default, which adds `list_tools`/`get_tool_info`
+  calls per tool used; `preload: true` is pinned in every benchmark condition
+  (ADR-016).
 - **Budgets**: subagents are dynamic and share the root agent's tools, so
   per-subagent budgets are advisory prompt text. Real limits are
   `config.iteration_limit` and engine-side rate limiting.

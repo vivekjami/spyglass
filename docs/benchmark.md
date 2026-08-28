@@ -33,6 +33,10 @@ and contaminate the control group:
 }
 ```
 
+Plus, on every MCP server entry, `"preload": true` — deferred tool loading
+otherwise adds harness-side `list_tools`/`get_tool_info` calls to the tool-call
+metric, unevenly across conditions.
+
 Rationale and reversal conditions: [ADR-016](adr/ADR-016-harness-context-management-pinning.md).
 
 ## Metrics

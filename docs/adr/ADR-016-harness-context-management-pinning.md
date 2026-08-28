@@ -79,6 +79,17 @@ what the harness was doing without cross-referencing TrueForge's version.
   is listed in the condition files alongside these two.
 - `docs/benchmark.md` states the pinned values as part of the methodology.
 
+## Amendment (same day) — deferred tool loading
+
+Live traces showed the agent calling the harness built-ins `list_tools` and
+`get_tool_info` before every first use of an MCP tool. This is TrueForge's
+deferred tool loading, and it adds 1–2 calls per tool touched — directly onto
+benchmark metric 5 (tool calls) and onto tokens, unevenly across conditions
+(5 raw tools vs 10 shaped ones). Same class of confound as above, same
+treatment: **`preload: true` is pinned on every MCP server in every condition
+file.** The count then measures the agent's investigation, not the harness's
+tool discovery.
+
 ## Reversal conditions
 
 If disabling compaction causes baseline runs to fail so early that they produce

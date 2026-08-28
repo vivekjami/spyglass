@@ -18,13 +18,14 @@ fallback per failure.* A failed item with an armed fallback is a passing Phase 0
 
 | # | Item | Status |
 |---|---|---|
-| 1 | TrueForge launches and a model responds | ⏳ pending model API key |
-| 2 | A Rust `rmcp` HTTP MCP server connects and its tools are invocable | ✅ **PASS** (connect + enumerate + invoke) · agent-driven call pending key |
-| 3 | Sandbox can reach a Docker Compose container | ✅ **unblocked** — local sandbox available (see F1) |
-| 4 | Subagents spawn and return | ⏳ pending model API key |
-| 5 | A tool marked approval-required actually gates | ✅ mechanism confirmed · live test pending key |
+| 1 | TrueForge launches and a model responds | ✅ **PASS** (F0) |
+| 2 | A Rust `rmcp` HTTP MCP server connects and its tools are invocable | ✅ **PASS** — connect, enumerate, invoke, and agent-driven invoke (F3) |
+| 3 | Sandbox can reach a Docker Compose container | ❌ **FAIL, fallback written** — isolated by design at two layers; harness allowlist hard-coded (F9) |
+| 4 | Subagents spawn and return | ⏳ **blocked by provider daily quota** — unverified (F11) |
+| 5 | A tool marked approval-required actually gates | ✅ **PASS** — live gate + programmatic allow (F4); deny schema-confirmed |
 | 6 | *(added)* Programmatic session control for the benchmark runner | ✅ PASS |
-| 7 | *(added)* Benchmark-fairness flags identified and pinned | ✅ PASS (ADR-016) |
+| 7 | *(added)* Benchmark-fairness flags identified and pinned | ✅ PASS (ADR-016; extended by F12) |
+| — | **Provider key viability** | ❌ **BLOCKER** — free tier is 20 requests/day (F10) |
 
 ---
 
@@ -48,6 +49,24 @@ README setup section, not just here.
 ---
 
 ## Findings
+
+### F0. Harness launches and a model responds ✅ (item 1)
+
+`scripts/configure-model.sh` registered `google-gemini` through
+`POST /api/v1/settings/model-providers`. A session with an inline spec, one
+turn, and a poll of `GET /sessions/{id}/turns/{tid}` returned:
+
+```
+status : done
+output : PHASE0_ITEM1_OK
+usage  : {"input_tokens": 1144, "output_tokens": 85, "cache_read_tokens": 0,
+          "input_tokens_breakdown": {"harness": 1288, "skills": 0,
+          "instructions": 7, "tool_definitions": 0, "messages": 0}}
+```
+
+`input_tokens_breakdown` is a gift for the benchmark: it separates harness
+overhead from instructions, tool definitions, and messages, so the evidence
+payload's token cost can be isolated from the harness's fixed cost per call.
 
 ### F1. The sandbox does **not** require Daytona — a local sandbox exists ✅
 
@@ -84,16 +103,15 @@ GET /api/v1/capabilities
 {"data":{"sandbox":{"enabled":true},"skill":{"enabled":true},"settings":{"enabled":true}}}
 ```
 
-**Consequences, all favourable:**
+**Consequences:**
 - No Daytona account, no cloud dependency, no API key for the sandbox.
-- The sandbox runs **on this host**, so reaching Compose services is ordinary
-  local networking rather than an inbound-tunnel problem.
 - Skills also became available (they require a sandbox).
 - A judge reproducing the demo needs `bwrap`, `socat`, `rg` — now documented and
   scripted.
-
-The deploy-window bisection fallback stays written down (ADR-010) but is no
-longer the expected path.
+- **But a local sandbox is not local network reach.** The first draft of this
+  finding assumed it was. The direct test in F9 shows the sandbox is
+  network-isolated by design and TrueForge's egress allowlist is hard-coded.
+  Item 3 is a **FAIL with a written fallback** — see F9.
 
 ### F2. MCP transport: `remote` only — no stdio ✅ (confirms ADR-003)
 
@@ -143,10 +161,12 @@ POST /mcp  {"method":"tools/call","params":{"name":"probe_ping",
 That is the ADR-002 Rust argument made empirical rather than asserted, and it is
 the number the demo puts on screen at 0:45–1:30.
 
+Driven by an agent in a live session (`mcp_servers: [{name: "phase0-probe"}]`),
+the model called the tool itself and reported `engine_latency_ms: 0.005727`.
+
 The highest-risk integration seam — Rust `rmcp` against TrueForge's
-`@modelcontextprotocol/sdk` 1.29 — is crossed: connect, enumerate, and invoke
-all work. Invocation *driven by an agent in a session* additionally requires a
-model, and is pending a key.
+`@modelcontextprotocol/sdk` 1.29 — is fully crossed: connect, enumerate,
+invoke, and agent-driven invoke.
 
 ### F4. The approval gate is real, and can be driven programmatically ✅ (item 5)
 
@@ -183,7 +203,22 @@ The harness then emits, and accepts, these events:
 tool-response items."* Deny carries an optional reason surfaced to the agent —
 useful for the S6 refusal scenario.
 
-**Live gating test is pending a model key.**
+**Live test — PASS.** With `require_approval_for_tools: ["probe_rollback"]`:
+
+1. The turn finished with `state.status: "done"`, `output: null`, and
+   `state.required_actions: [{type: "tool.approval_required", thread_id: "main",
+   tool_calls: [{id: "call_487988", ...}]}]`. **The tool did not execute.**
+   Note the shape: a gated turn does not sit in a "waiting" status — it
+   completes, and the ask travels in `required_actions`. A runner that reads
+   only the status will mistake a blocked turn for a finished one.
+2. Resuming with `{"type":"user.tool_approval","thread_id":"main",
+   "tool_call_id":"call_487988","approval":{"status":"allow"}}` as the sole
+   input item executed the tool (`"executed":true,"simulated":true`) and the
+   agent reported success.
+
+The **deny** path (`{"status":"deny","reason":"..."}`) is schema-confirmed but
+not live-tested: the run that would have exercised it is the one that hit the
+provider's daily quota (F10). It uses the identical resume mechanism.
 
 ### F5. Subagents are dynamic, not statically defined ⚠️ spec divergence
 
@@ -231,7 +266,18 @@ GET    /api/v1/mcp-servers/{name}/tools              tool discovery
 ```
 
 Local standalone mode runs with **auth disabled** (`warn Auth is disabled`), so
-the runner needs no credentials. `CreateTurnRequest.stream` defaults to `true`
+the runner needs no credentials.
+
+**Verified live.** [`scripts/tf.py`](../scripts/tf.py) (stdlib only) does
+create-session → create-turn → poll → events → usage. Three API facts the docs
+do not state, each of which cost a wrong first draft:
+
+- A turn's status is at **`state.status`**, not top-level `status`. Reading the
+  wrong key returns `None` forever, and a poll loop never exits.
+- `stream: false` returns the *running* turn; completion is by polling
+  `GET /sessions/{id}/turns/{tid}` until `state.status != "running"`.
+- A gated turn ends as `done` with `output: null` and the ask in
+  `state.required_actions` (F4). `CreateTurnRequest.stream` defaults to `true`
 and can be set `false` to get the running turn immediately and poll events — the
 simpler shape for an unattended benchmark.
 
@@ -294,6 +340,130 @@ segment depends on the baseline visibly drowning, not instantly erroring). If
 that happens, the fix is to raise Model A, not to weaken the treatment — and it
 gets recorded, per ADR-012.
 
+### F9. The local sandbox cannot reach Compose — by design, at two layers ❌ (item 3)
+
+Tested **directly against the sandbox runtime, with no model involved**. The
+question is about networking; routing it through an LLM on a rate-limited key
+was the wrong experiment, and it cost three failed attempts before that was
+obvious. Target: a one-container Compose service at `172.22.0.2:8899`, also
+port-published on `127.0.0.1:8899`, serving a sentinel string.
+
+| Test (`srt -c "curl …"`) | Result |
+|---|---|
+| default settings → `172.22.0.2:8899` | `rc=7` — blocked |
+| default settings → `localhost:8899` | `rc=7` — blocked |
+| allowlist includes the IP → `172.22.0.2:8899` | `rc=7` — **still blocked** |
+| allowlist includes `example.com` → `http://example.com` | `200` — proxy path works |
+| allowlist includes the IP **and** `NO_PROXY` unset → `172.22.0.2:8899` | **`200`, sentinel received** |
+| same via `localhost:8899` | **`200`, sentinel received** |
+
+Layer by layer:
+
+1. **SRT removes the network namespace entirely on Linux.** The only egress is
+   an HTTP/SOCKS proxy on the host, reached over a bind-mounted Unix socket
+   (`HTTP_PROXY=http://srt.<token>@localhost:3128`). Direct connections fail
+   with `Network is unreachable`.
+2. **SRT sets `NO_PROXY` to every private range** —
+   `localhost,127.0.0.1,::1,169.254.0.0/16,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`.
+   Compose networks live in `172.16.0.0/12`, so `curl` bypasses the proxy for
+   them and hits layer 1. Deliberate: it stops sandboxed code reaching the
+   host's LAN and loopback services.
+3. **The proxy will forward to a private IP** when the destination is on the
+   allowlist and the client is told to use the proxy — the last two rows prove
+   the mechanism end-to-end.
+4. **TrueForge's allowlist is a hard-coded constant** with no env, settings-file,
+   or API override. `LOCAL_SANDBOX_ALLOWED_DOMAINS` = `pypi.org`, `*.pypi.org`,
+   `pythonhosted.org`, `files.pythonhosted.org`, `*.pythonhosted.org`,
+   `github.com`, `api.github.com`, `codeload.github.com`, `*.github.com`,
+   `githubusercontent.com`, `raw.githubusercontent.com`,
+   `objects.githubusercontent.com`, `*.githubusercontent.com`. Package installs
+   and repo fetches; nothing else.
+
+Under TrueForge, agent-generated code in the sandbox **cannot reach the Compose
+stack**, and there is no supported knob to change that. Patching the harness
+bundle is not an option: not reproducible on a judge's machine, and exactly the
+"rebuild sponsor infrastructure" anti-pattern the spec rules out.
+
+**Fallbacks, in order of preference — decision needed before Phase 8:**
+
+- **(A) Replay as a bounded MCP tool — recommended.** Move the experiment into
+  the evidence plane: `replay_exemplar(template_id, versions[], n)` on the
+  engine (or a small third "experiment" MCP server), which sits on the Compose
+  network and reaches `payments-v1` / `payments-v2` directly. The agent still
+  designs the experiment (which exemplar, which versions, N) and still receives
+  `{v1: k₁/N, v2: k₂/N}` as ledger entries E5/E6. Survives: the
+  correlation→causation upgrade, the demo's intellectual peak, determinism,
+  bounds, ledger citation. Lost: the sandbox as the actor, and the
+  "agent-written code runs in the sponsor's sandbox" story. ADR-010 is amended,
+  not reversed — the controlled experiment happens; its executor changes.
+- **(B) Daytona + a public tunnel.** The spec's original path. Needs a Daytona
+  key, a tunnel (cloudflared/ngrok) exposing both payments services, and
+  TrueForge's Daytona provider — three external dependencies live during a
+  demo. Keeps the sandbox load-bearing. Not primary on risk; kept if the
+  sponsor-tool story is judged worth it.
+- **(C) Deploy-window bisection, RCA downgraded to correlational.** The spec's
+  stated fallback. Strictly weaker than (A) — it gives up causal evidence — so
+  it is now the fallback *to the fallback*.
+
+The sandbox keeps a real job under (A): computing and presenting the replay
+statistics, generating the postmortem, and analysing ledger data — code
+execution that needs no network.
+
+### F10. The free-tier Gemini key is unusable for this project ❌ BLOCKER
+
+Every test after item 5 failed on:
+
+```
+Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests,
+limit: 20, model: gemini-3.6-flash
+quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+```
+
+**20 requests per day** for `gemini-3.6-flash`, on top of a 5-per-minute limit
+seen earlier. The "please retry in 14s" hint is misleading — it reports the
+per-minute window while the per-day bucket is empty.
+
+Why this is a blocker, not an inconvenience:
+
+- One agent turn is not one request. With deferred tool loading (the default)
+  the trace for a *single* tool use was `list_tools → get_tool_info →
+  call_tool → answer`: **four model calls**. A real investigation is 20–50.
+- Phase 10 is {baseline, spyglass, ablation} × {S1..S3} × 3 = 27–54
+  investigations. On this key that is weeks, not a Sunday morning.
+- **TrueForge does not retry a 429.** The turn goes straight to
+  `state.status: "error"` and the trajectory is gone. A rate-limited run is
+  not a slow run; it is a lost run. `scripts/tf.py` has `turn_with_retry` for
+  the runner, but it re-runs the whole turn — it cannot resume a dead one.
+
+Today's quota is exhausted; it resets at midnight Pacific (~12:30 IST
+Saturday), mid-build. **Decision needed:** enable billing on the Gemini project
+(pay-as-you-go lifts the daily cap and raises RPM into the hundreds), or supply
+a key for another catalog provider. The model *choice* stands — Flash is still
+the right cost/capability call — only the tier has to change.
+
+### F11. Subagents — blocked by provider quota, mechanism unverified ⏳ (item 4)
+
+One paced attempt (65 s wait; no MCP servers attached, to avoid deferred-loading
+round-trips; `dynamic_sub_agents.enabled: true`) plus two retries all failed on
+the daily quota (F10). The `create_sub_agent` built-in exists and is documented;
+whether it spawns, what it returns, and whether the sub-agent's thread events
+surface on the parent turn remain **unverified**. First thing to re-run once a
+usable key exists — a five-minute test.
+
+### F12. Deferred tool loading inflates the tool-call metric ⚠️
+
+In every traced turn, before calling `probe_rollback` the agent first called the
+built-ins `list_tools` and `get_tool_info`. TrueForge's *deferred tool loading*
+keeps tool schemas out of the prompt until asked for — good for token cost on
+large catalogs, but it adds 1–2 harness calls per tool the agent touches.
+
+That lands on benchmark metric 5 (tool calls) and on tokens, and it would hit
+the two conditions differently: the baseline has 5 raw tools, Spyglass has 10
+shaped ones. The MCP server spec has `preload: true` / `preload_tools: [...]`
+to inject schemas up front. **Pin `preload: true` in every condition** so the
+count measures the agent's investigation, not the harness's discovery — added
+to ADR-016 as the same class of confound.
+
 ---
 
 ## Reproducing this
@@ -324,12 +494,16 @@ curl -s localhost:8790/api/v1/mcp-servers/phase0-probe/tools   # expect 2 tools
 1. **Subagents** — the README's "per-subagent tool/token budgets enforced via
    TrueForge subagent config" is wrong. Rewrite per F5: dynamic subagents,
    advisory prompt budgets, real enforcement engine-side plus `iteration_limit`.
-2. **Sandbox** — replace "Daytona / TrueForge sandbox" with the local
-   sandbox-runtime path and its three host dependencies (F1). Bisection stays as
-   the fallback, demoted from likely to unlikely.
+2. **Sandbox** — the local sandbox-runtime path replaces Daytona (F1), **but
+   it cannot reach Compose** (F9). Sandbox Causal Verification must be rewritten
+   around fallback (A): the replay runs as a bounded MCP tool on the evidence
+   plane; the sandbox does non-network work. ADR-010 amended accordingly.
 3. **Bench runner** — the TS SDK is not a safe dependency; the runner targets
    the REST API (F6). Technology Stack updated accordingly.
 4. **Benchmark conditions** — must pin `compaction` and `large_tool_response`
    in every condition (F7 / ADR-016), and say so in `docs/benchmark.md`.
 5. **Prerequisites** — Node 22.14+, and `bwrap`/`socat`/`rg` for the sandbox,
    belong in the README's setup section.
+6. **Model tier** — a free-tier key cannot run the benchmark (F10). The README's
+   "any provider TrueForge supports" needs the qualifier *on a paid tier*.
+7. **Tool preloading** — `preload: true` pinned in every condition (F12).

@@ -32,8 +32,9 @@ data/segments/
 ledger/*.jsonl
 !ledger/sample.jsonl
 
-# Node
+# Node / Python
 node_modules/
+__pycache__/
 
 # Secrets. Never committed (hackathon rule + docs/safety.md).
 .env
