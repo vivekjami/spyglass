@@ -33,7 +33,7 @@ this file never describes code that does not exist.
 | C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | probe validated (Phase 0) |
 | C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | not started |
 | C9 | Causal verification (exemplar replay) | Phase 8 | sandbox reach **failed** (Phase 0, F9) → replay-as-MCP-tool planned |
-| C10 | Human approval gate | Phase 9 | mechanism validated (Phase 0) |
+| C10 | Human approval gate | Phase 9 | mechanism validated (Phase 0); deployer-side idempotency + TOCTOU built (Phase 1) |
 | C11 | Post-action verification loop | Phase 9 | not started |
 
 ## Harness integration (validated in Phase 0)
@@ -61,6 +61,46 @@ Everything here was verified against TrueForge 0.1.4 — see
 - **Budgets**: subagents are dynamic and share the root agent's tools, so
   per-subagent budgets are advisory prompt text. Real limits are
   `config.iteration_limit` and engine-side rate limiting.
+
+## Target system (Phase 1 — built)
+
+The incident environment the engine observes and the agent investigates.
+Scenery, not the show — but the evidence it emits is the raw material for
+everything upstream, so its shape is specified, not improvised.
+
+```
+loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
+  seed 42    :8080       :8081  ╲▶ payments-v2  (S1 regression)   ← both ALWAYS on
+  10 req/s     │           │ ╲
+               │           │  ╲▶ postgres (orders table)
+               │           ╰──▶ /deploy/current.json  ← written by the deployer
+               ╰── request capture (sanitized headers, capped body)
+```
+
+| Piece | What it does | Where |
+|---|---|---|
+| `common` | JSON log formatter, Prometheus metrics, `x-request-id` propagation, deploy-state lookup, deterministic noise | `target-system/common/` |
+| `gateway` | public edge; captures each request for later replay (auth headers never captured) | `target-system/gateway/` |
+| `orders` | persists to postgres, then charges via whichever payments version `current.json` names — read per request, so a deploy or rollback is a file write, not a restart | `target-system/orders/` |
+| `payments` | one codebase, two always-on instances; `v2` carries S1's seeded `UnsupportedCurrency` regression plus two benign novel INFO templates as decoys | `target-system/payments/` |
+| `loadgen` | deterministic mixed traffic: 20% non-USD (the S1 failure class), 2% malformed, 1% injection-styled user-agents, seeded WARN chatter | `target-system/loadgen/` |
+| `deployer` | Rust CLI: `init`, `deploy`, `rollback`, `current`, `journal`. Atomic state writes; append-only journal that is its own WAL; rollback is idempotent on `request_id` and aborts on a TOCTOU version mismatch | `deployer/` |
+| `watch` | error-rate dashboard + threshold alert (ADR-013's terminal dashboard); on alert, opens a TrueForge session with the alert as its first turn — `SPYGLASS_AGENT` selects which agent answers | `scripts/watch.py` |
+| scenarios | pre-registered ground truth (`SCHEMA.md`), injector, noise profile, reproducibility check | `scenarios/` |
+
+**Evidence contract** (what the engine ingests, README C1):
+
+- Logs: `data/logs/<instance>.jsonl`, one JSON object per line — `ts`,
+  `service`, `instance`, `version`, `level`, `req_id`, `msg`, plus `route`,
+  `status`, `latency_ms`, `deploy_id`, `upstream`, `stack`, `kind`,
+  `headers`/`body` (request capture) when known.
+- Metrics: Prometheus text on each service's `/metrics` — `requests_total`,
+  `errors_total`, `latency_ms_bucket`, `upstream_requests_total`.
+- Deploy events: `data/deploy/journal.jsonl` —
+  `{n, kind, deploy_id, service, version, from_version, ts, actor, request_id?, justification_eids?, note?}`.
+
+Acceptance evidence for the S1 scenario lives in
+[`scenarios/s1-payment-regression/README.md`](../scenarios/s1-payment-regression/README.md).
 
 ## The Kubernetes delta — documented, not built
 

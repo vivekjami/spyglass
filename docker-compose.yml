@@ -1,0 +1,126 @@
+# Spyglass target system: gateway -> orders -> payments (v1 AND v2, always on),
+# postgres, redis, and a deterministic load generator.
+#
+# Both payments versions run side by side. orders routes to whichever the
+# deployer's data/deploy/current.json names, read per request -- so a deploy
+# or rollback is a file write, not a container restart, and a failing request
+# can be replayed against either version without touching live routing.
+#
+# Host ports are overridable (GATEWAY_PORT etc., read from .env) because 8080
+# is busy on more machines than not.
+# Services run as the host user so the bind-mounted logs stay deletable
+# without sudo. Logs: ./data/logs/<instance>.jsonl (one JSON object per line).
+
+name: spyglass
+
+x-service: &service
+  build: ./target-system
+  user: "${SPYGLASS_UID:-1000}:${SPYGLASS_GID:-1000}"
+  restart: unless-stopped
+  volumes:
+    - ./data/logs:/var/log/spyglass
+    - ./data/deploy:/deploy:ro
+  healthcheck:
+    test: ["CMD-SHELL", "python -c \"import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PORT']+'/health',timeout=2)\""]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 10s
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spyglass
+      POSTGRES_PASSWORD: spyglass
+      POSTGRES_DB: spyglass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spyglass -d spyglass"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  payments-v1:
+    <<: *service
+    command: ["python", "-m", "payments.app"]
+    environment:
+      SERVICE_NAME: payments
+      INSTANCE_NAME: payments-v1
+      SERVICE_VERSION: v1
+      PORT: "8082"
+      REDIS_URL: redis://redis:6379/0
+    ports: ["127.0.0.1:${PAYMENTS_V1_PORT:-8082}:8082"]
+    depends_on:
+      redis: {condition: service_healthy}
+
+  payments-v2:
+    <<: *service
+    command: ["python", "-m", "payments.app"]
+    environment:
+      SERVICE_NAME: payments
+      INSTANCE_NAME: payments-v2
+      SERVICE_VERSION: v2
+      PORT: "8082"
+      REDIS_URL: redis://redis:6379/0
+    ports: ["127.0.0.1:${PAYMENTS_V2_PORT:-8083}:8082"]
+    depends_on:
+      redis: {condition: service_healthy}
+
+  orders:
+    <<: *service
+    command: ["python", "-m", "orders.app"]
+    environment:
+      SERVICE_NAME: orders
+      INSTANCE_NAME: orders
+      SERVICE_VERSION: v1
+      PORT: "8081"
+      DATABASE_URL: postgresql://spyglass:spyglass@postgres:5432/spyglass
+      PAYMENTS_V1_URL: http://payments-v1:8082
+      PAYMENTS_V2_URL: http://payments-v2:8082
+    ports: ["127.0.0.1:${ORDERS_PORT:-8081}:8081"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      payments-v1: {condition: service_healthy}
+      payments-v2: {condition: service_healthy}
+
+  gateway:
+    <<: *service
+    command: ["python", "-m", "gateway.app"]
+    environment:
+      SERVICE_NAME: gateway
+      INSTANCE_NAME: gateway
+      SERVICE_VERSION: v1
+      PORT: "8080"
+      ORDERS_URL: http://orders:8081
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8080}:8080"]
+    depends_on:
+      orders: {condition: service_healthy}
+
+  loadgen:
+    <<: *service
+    command: ["python", "-m", "loadgen.main"]
+    environment:
+      SERVICE_NAME: loadgen
+      INSTANCE_NAME: loadgen
+      SERVICE_VERSION: v1
+      GATEWAY_URL: http://gateway:8080
+      LOADGEN_SEED: "${LOADGEN_SEED:-42}"
+      LOADGEN_RATE: "${LOADGEN_RATE:-10}"
+    healthcheck:
+      disable: true
+    depends_on:
+      gateway: {condition: service_healthy}
+
+volumes:
+  pgdata: {}

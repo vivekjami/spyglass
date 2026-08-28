@@ -16,6 +16,27 @@ as each phase lands. Recorded across Phases 2, 9 and 11.
 | 2:25–2:45 | The ledger | postmortem citing E1–E7; one `get_evidence(E3)` dereference | Auditability made concrete |
 | 2:45–3:00 | The numbers | baseline vs Spyglass table (measured values only) + repo end card | The claim settled by measurement |
 
+## Per-segment commands (filled in as each phase lands)
+
+### 0:00–0:10 — Incident begins ✅ available (Phase 1)
+
+Terminal A, the dashboard; terminal B, the injection. Filmed against the
+default timeline the fault is eight minutes in; for the shot, inject directly:
+
+```bash
+just up                                   # once; stack healthy, all v1
+just watch                                # A: green — 0.0% 5xx, payments=v1
+./target/release/deployer --data-dir data/deploy deploy payments v2 --actor deploy-bot   # B
+#  A: within one 5 s window the bar climbs to ~20%; two windows later the
+#     alert fires and (with SPYGLASS_AGENT set) the investigation session opens
+```
+
+Reset between takes: `./target/release/deployer --data-dir data/deploy rollback payments v1 --request-id $(uuidgen)`.
+
+### 0:10–0:30 — Naive agent drowns — Phase 2 (footage captured then, not reshot)
+### 0:45–2:45 — Phase 3–9
+### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
+
 ## Production rules
 
 - Baseline footage is captured in **Phase 2**, not reshot on Sunday.
