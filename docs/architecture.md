@@ -85,7 +85,7 @@ loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
 | `payments` | one codebase, two always-on instances; `v2` carries S1's seeded `UnsupportedCurrency` regression plus two benign novel INFO templates as decoys | `target-system/payments/` |
 | `loadgen` | deterministic mixed traffic: 20% non-USD (the S1 failure class), 2% malformed, 1% injection-styled user-agents, seeded WARN chatter | `target-system/loadgen/` |
 | `deployer` | Rust CLI: `init`, `deploy`, `rollback`, `current`, `journal`. Atomic state writes; append-only journal that is its own WAL; rollback is idempotent on `request_id` and aborts on a TOCTOU version mismatch | `deployer/` |
-| `watch` | error-rate dashboard + threshold alert (ADR-013's terminal dashboard) | `scripts/watch.py` |
+| `watch` | error-rate dashboard + threshold alert (ADR-013's terminal dashboard); on alert, opens a TrueForge session with the alert as its first turn — `SPYGLASS_AGENT` selects which agent answers | `scripts/watch.py` |
 | scenarios | pre-registered ground truth (`SCHEMA.md`), injector, noise profile, reproducibility check | `scenarios/` |
 
 **Evidence contract** (what the engine ingests, README C1):

@@ -30,6 +30,25 @@ matches within tolerance both times; ground truth validates against
 Run-to-run drift on the scoring windows: **0.3 points** (tolerance 5.0).
 Pre-registered post-fault band: 14–26%. Verdict: **PASS**.
 
+### Default (demo) timeline — 120 s steady, 360 s lead, 90 s observe
+
+The same test on the full-length timeline, the one the demo uses, so the
+"benign deploy six minutes earlier" is literally six minutes earlier:
+
+| Run | Fault deploy | Pre-fault 5xx (max over **45** windows, incl. 6 min after the benign deploy) | Post-fault 5xx, scoring windows +20s..+80s | Checkouts before fault |
+|---|---|---|---|---|
+| `20260828T125541Z` | `D-2` at 13:03:41 | **0.0%** | **20.5%** [16.2 .. 26.0] | 4,762 |
+| `20260828T130600Z` | `D-2` at 13:14:00 | **0.0%** | **20.5%** [16.2 .. 26.0] | 4,762 |
+
+Drift: **0.0 points** — and not by rounding. Every 10-second window is
+byte-identical between the two runs (same request count, same 5xx count),
+because both runs completed exactly 4,762 checkouts before the fault and
+therefore routed the same seeded request, #4,763, to `v2` first. The request
+stream is a pure function of the seed and the timeline is fixed wall-clock, so
+the error curve reproduces to the request, not just to the tolerance. The
+benign `orders v1.1` deploy at −360 s produced zero errors across all 36
+windows that followed it. Verdict: **PASS**.
+
 Run 2's curve, 10-second buckets relative to the fault:
 
 ```
@@ -75,14 +94,22 @@ needle, and the 553 decoy lines are the needle-shaped hay.
 ## What the watcher sees
 
 `just watch` polls the gateway's `/metrics`, and fires when the 5xx share of
-`/checkout` exceeds 5% for two consecutive 5-second windows:
+`/checkout` exceeds 5% for two consecutive 5-second windows. The alert is
+written to `data/alerts/latest.json` **and opens a TrueForge session** with
+the alert as its first message — the spec's data-flow step 3:
 
 ```
-payments error alert firing: gateway /checkout 5xx rate 20.0%
-(threshold 5%) for 2 consecutive 5s windows  -> data/alerts/latest.json
+*** ALERT *** payments error alert firing: gateway /checkout 5xx rate 24.5%
+              (threshold 5%) for 2 consecutive 5s windows
+-> data/alerts/latest.json
+-> TrueForge session opened: 01m146ympvmb19p0mbhyp4st97 (agent=inline)
 ```
 
-In Phase 3 that alert opens the TrueForge session.
+Which agent answers is configuration (`SPYGLASS_AGENT`). Until Phase 3
+registers the Spyglass SOP, a bare inline agent acknowledges the alert and
+lists the evidence it would need — verified live: *"Alert Acknowledged …
+Required Evidence & Access Needed to Proceed …"*. `--no-session` announces
+only.
 
 ## Reproducibility notes
 
@@ -90,8 +117,9 @@ In Phase 3 that alert opens the TrueForge session.
   a request needs is taken in a fixed order (`loadgen/main.py`).
 - Background noise is derived from request ids by hashing, so it is pinned by
   the same seed (`common.noise_roll`).
-- What is *not* deterministic: which request index first meets v2, because
-  the fault is injected at a wall-clock time. That moves the step by at most
-  one request; it does not move the proportion.
+- Which request index first meets v2 depends on wall-clock alignment between
+  loadgen start and fault injection. In practice both default-timeline runs
+  landed on the same index (4,763), giving identical curves; where it differs
+  it moves the step by a request or two, not the proportion.
 - Deploy ids are deterministic because `just scenario` starts from a reset
   journal and the deployer numbers only routing changes.
