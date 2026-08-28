@@ -15,6 +15,7 @@ the running record of decisions and findings.
 | [`safety.md`](safety.md) | The safety model: read/write separation, injection defence, approval gate. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |
 | [`demo.md`](demo.md) | Shot list and per-segment commands. |
+| [`../scenarios/SCHEMA.md`](../scenarios/SCHEMA.md) | Ground-truth format; each scenario's README carries its measured acceptance evidence. |
 
 ## Conventions
 

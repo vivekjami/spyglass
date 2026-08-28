@@ -723,13 +723,19 @@ on a clean machine — see `docs/phase0-findings.md`:
 |---|---|---|
 | **Node ≥ 22.14** | TrueForge declares `engines: node >=22`; Ubuntu ships 20.x | `scripts/install-node22.sh` (no root; installs to `~/.local/node-v22`) |
 | **`bwrap`, `socat`, `rg`** | TrueForge's *local* sandbox needs all three, else it silently disables the sandbox — and with it the causal-replay step | `scripts/install-sandbox-deps.sh` (no root) |
-| Rust ≥ 1.94, Docker + Compose, Python 3.12 | engine, target system, bench reporting | distro packages |
+| **`just`** | every workflow command (`just scenario s1`, `just demo`) | `scripts/install-just.sh` (no root) |
+| Rust ≥ 1.94, Docker + Compose, Python 3.12 + PyYAML | engine, target system, scenario tooling | distro packages |
+| Free host ports | gateway/orders/payments publish on 127.0.0.1:8080–8083 by default; **8080 is often taken** | set `GATEWAY_PORT` etc. in `.env` |
 | A model provider API key | any of 8 providers, or an OpenAI-compatible endpoint | configured in TrueForge Settings → Models |
 
 ```bash
-scripts/install-node22.sh && scripts/install-sandbox-deps.sh
+scripts/install-node22.sh && scripts/install-sandbox-deps.sh && scripts/install-just.sh
 source scripts/env.sh
+cp .env.example .env              # model key + host ports
 scripts/trueforge.sh start        # harness on :8790, state in .local/ (disposable)
+just build && just up             # target system: gateway -> orders -> payments v1/v2
+S1_FAST=1 just scenario s1        # inject the S1 incident from clean state
+just watch                        # error-rate dashboard + alert
 ```
 
 ---
