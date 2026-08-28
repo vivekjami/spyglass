@@ -1,0 +1,17 @@
+# S1 noise profile. Pinned by LOADGEN_SEED; the values below are what the
+# code implements (loadgen/main.py, orders/app.py, gateway/app.py) and are
+# recorded here so a reader does not have to grep for them. Change both.
+seed: 42
+rate_rps: 10
+payload_mix:
+  currency: {USD: 80, EUR: 12, GBP: 5, JPY: 3}     # non-USD ~20% -> the S1 failure class
+  card_class: {standard: 70, premium: 20, corporate: 10}
+  amount: lognormal(mu=3.5, sigma=0.6)
+background:
+  malformed_request_rate: 0.02      # -> 400 at orders; normal life
+  injection_user_agent_rate: 0.01   # -> logged verbatim by gateway request capture
+  warn_chatter:
+    orders_pg_slow_rate: 0.03       # "postgres insert slower than budget"
+    gateway_slow_rate: 0.02         # "upstream latency above soft threshold"
+decoy_change:
+  benign_deploy: {service: orders, version: v1.1, lead_secs_before_fault: 360}
