@@ -59,6 +59,10 @@ expected_evidence:
     note: the only change in the journal, six minutes before the symptom and outside the correlation window; citing it as ruled out is correct, blaming it is not (the verdict decides)
     match: {kind: [deploy], deploy_id: D-1}
   - kind: absence
+    key: false
+    note: the journal read -- its init entry cited alongside D-1 as "nothing else changed"
+    match: {kind: [journal_init]}
+  - kind: absence
     key: true
     scored: false
     note: >

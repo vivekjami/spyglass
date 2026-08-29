@@ -111,6 +111,16 @@ against pre-registered `match` maps (kind, pattern text, series metric,
 service, direction, deploy id, offset from the fault, replay verdict).
 No LLM judge: a judge adds a model's opinion to a measurement of models.
 
+One smoke run before the matrix (Spyglass on S3: `report_only`, `redis /
+none`, 7 of 7 eids valid) showed three cited items the ground truth had no
+class for — the journal's `init` entry cited as "nothing was deployed", the
+exemplar, and the replay that failed on *both* versions ("not a property of
+a version"). All three are evidence *for* the right answer, so S2, S3 and
+S6 gained supporting (`key: false`) entries for them before any benchmark
+run; recorded here because "pre-registered" has to mean before the runs it
+scores, and this is the only edit the ground truth received after an agent
+had seen a scenario.
+
 Two consequences the tables carry: the baseline has no evidence ids, so
 its precision/recall read `n/a` — its claims are not re-checkable, which
 is a result, not a gap in the scorer; and "false hypotheses" (metric 12)

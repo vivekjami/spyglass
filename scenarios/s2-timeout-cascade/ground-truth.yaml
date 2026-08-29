@@ -84,6 +84,10 @@ expected_evidence:
     pattern: "orders unreachable: ReadTimeout"
     note: the only novel ERROR template is the edge SYMPTOM, at the wrong service; it points at orders being slow, not at why
     match: {kind: [novel_template, template_hit], pattern_contains: "orders unreachable"}
+  - kind: exemplar
+    key: false
+    note: "a captured timed-out request, if the agent fetches one; the replay has no version pair for orders (replayable false) and says so"
+    match: {kind: [exemplar_request]}
   - kind: absence
     key: false
     scored: false

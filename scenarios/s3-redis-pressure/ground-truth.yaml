@@ -56,8 +56,20 @@ expected_evidence:
     match: {kind: [changepoint], metric_in: [error_rate, errors_total], direction: up, at_after_fault_secs: [-15, 60]}
   - kind: absence
     key: false
+    note: no deploy or rollback in the journal since init -- reading the journal and citing its only entry is the evidence of that absence
+    match: {kind: [journal_init]}
+  - kind: exemplar
+    key: false
+    note: a captured failing request, if the agent fetches one for the causal check
+    match: {kind: [exemplar_request]}
+  - kind: replay_separation
+    key: false
+    note: the replay is a legitimate check here and its answer is "fails on every version -- not a property of a version"; citing it supports report-only
+    match: {kind: [replay_result], service: payments}
+  - kind: absence
+    key: false
     scored: false
-    note: no deploy or rollback in the journal since init; no changepoint is deploy-correlated; the failure is not a property of a version (both payments versions share the store)
+    note: no changepoint is deploy-correlated; both payments versions share the store
 
 decoys:
   - kind: warn_chatter
