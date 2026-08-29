@@ -21,6 +21,7 @@ pub mod ingest;
 pub mod rank;
 pub mod replay;
 pub mod tools;
+pub mod verify;
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
@@ -194,6 +195,11 @@ pub struct Investigation {
     pub evidence: BTreeMap<String, Value>,
     pub ledger_path: PathBuf,
     pub evidence_path: PathBuf,
+    /// Post-action verification state per "<service>:<deploy_id>" (Phase 9).
+    pub verifications: BTreeMap<String, verify::VerifyState>,
+    /// Engine-side call budget (README, Safety Model: the backstop).
+    pub calls_total: u64,
+    pub recent_calls: VecDeque<std::time::Instant>,
 }
 
 impl Investigation {
@@ -206,7 +212,35 @@ impl Investigation {
             evidence: BTreeMap::new(),
             ledger_path: dir.join(format!("{safe}.jsonl")),
             evidence_path: dir.join(format!("{safe}.evidence.jsonl")),
+            verifications: BTreeMap::new(),
+            calls_total: 0,
+            recent_calls: VecDeque::new(),
         }
+    }
+
+    /// Admit one more tool call under the budget, or say why not. Enforced
+    /// here so no prompt can talk the engine out of it; exhaustion is a
+    /// tool error the agent sees and must synthesise around.
+    pub fn admit(&mut self, limits: &spyglass_core::LimitsCfg) -> std::result::Result<(), String> {
+        let now = std::time::Instant::now();
+        while self.recent_calls.front().is_some_and(|t| now.duration_since(*t).as_secs() >= 60) {
+            self.recent_calls.pop_front();
+        }
+        if self.calls_total >= limits.max_calls_per_investigation {
+            return Err(format!(
+                "budget exhausted: {} tool calls in this investigation (limit {}); synthesise from the evidence you have and label the report partial",
+                self.calls_total, limits.max_calls_per_investigation
+            ));
+        }
+        if self.recent_calls.len() as u64 >= limits.max_calls_per_minute {
+            return Err(format!(
+                "rate limit: {} tool calls in the last minute (limit {}); stop and synthesise from the evidence you have",
+                self.recent_calls.len(), limits.max_calls_per_minute
+            ));
+        }
+        self.calls_total += 1;
+        self.recent_calls.push_back(now);
+        Ok(())
     }
 
     /// Assign the next `E<n>` to an evidence record and persist it.

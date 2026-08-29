@@ -35,7 +35,54 @@ pub struct Config {
     /// README C9 / ADR-010: the causal replay, as built in Phase 8.
     #[serde(default)]
     pub replay: ReplayCfg,
+    /// README C11: the post-action verification loop, as built in Phase 9.
+    #[serde(default)]
+    pub verify: VerifyCfg,
+    /// Engine-side backstop against runaway agents (README, Safety Model).
+    #[serde(default)]
+    pub limits: LimitsCfg,
     pub services: Vec<ServiceCfg>,
+}
+
+/// README C11. The engine judges recovery; the agent only asks.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct VerifyCfg {
+    /// Suggested gap between checks (the SOP sleeps this long).
+    pub interval_secs: i64,
+    /// Consecutive clean checks that close the incident.
+    pub checks_required: u32,
+    /// Seconds after the action before a still-open verification escalates.
+    pub timeout_secs: i64,
+    /// The post-action window each check judges: the last N seconds of ingested data after the action.
+    pub window_secs: i64,
+    /// Pre-incident baseline: the N seconds before the incident began.
+    pub baseline_secs: i64,
+    /// When the journal cannot name the deploy the action reverted, the incident is taken to be this long before the action.
+    pub incident_lookback_secs: i64,
+    /// Clean = post rate <= max(baseline * tolerance_ratio, baseline + tolerance_abs).
+    pub tolerance_abs: f64,
+    pub tolerance_ratio: f64,
+    /// Fewer request events than this in the post window = insufficient data, not a verdict.
+    pub min_requests: u64,
+}
+
+impl Default for VerifyCfg {
+    fn default() -> Self {
+        Self { interval_secs: 15, checks_required: 2, timeout_secs: 300, window_secs: 60, baseline_secs: 300, incident_lookback_secs: 300, tolerance_abs: 0.02, tolerance_ratio: 1.5, min_requests: 20 }
+    }
+}
+
+/// Per-investigation call budget, enforced by the engine regardless of prompt.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct LimitsCfg {
+    pub max_calls_per_investigation: u64,
+    pub max_calls_per_minute: u64,
+}
+
+impl Default for LimitsCfg {
+    fn default() -> Self {
+        Self { max_calls_per_investigation: 200, max_calls_per_minute: 60 }
+    }
 }
 
 /// The exemplar replay (README, Sandbox Causal Verification; ADR-010).

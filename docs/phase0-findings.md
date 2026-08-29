@@ -203,6 +203,12 @@ The harness then emits, and accepts, these events:
 tool-response items."* Deny carries an optional reason surfaced to the agent —
 useful for the S6 refusal scenario.
 
+*Phase 9 addendum:* the gate has **no timeout of its own** — a pending
+approval is held in an in-memory map (`pendingApprovals`) until answered, and
+the OpenAPI schema has no expiry field on `tool.approval_required`. The
+spec's "an expired approval is never executed" is therefore enforced by the
+deployer's proposal expiry (ADR-011).
+
 **Live test — PASS.** With `require_approval_for_tools: ["probe_rollback"]`:
 
 1. The turn finished with `state.status: "done"`, `output: null`, and

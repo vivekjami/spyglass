@@ -13,9 +13,9 @@ the running record of decisions and findings.
 | [`progress.md`](progress.md) | Where the build is against the spec's calendar; open decisions; drop order. |
 | [`phase0-findings.md`](phase0-findings.md) | What we actually verified about the TrueForge harness, and where reality diverged from the spec. |
 | [`phase1-findings.md`](phase1-findings.md) | The incident environment: what was built, what was measured, what pushed back. |
-| `phase2` … [`phase8-findings.md`](phase8-findings.md) | One record per phase: baseline (P2), the loop (P3), novelty (P4), changepoints (P5), ranking (P6), bundles (P7), the causal check (P8). |
+| `phase2` … [`phase9-findings.md`](phase9-findings.md) | One record per phase: baseline (P2), the loop (P3), novelty (P4), changepoints (P5), ranking (P6), bundles (P7), the causal check (P8), the hardened gate + verification (P9). |
 | [`adr/`](adr/) | Individual decision records — context, alternatives, why rejected, reversal conditions. |
-| [`safety.md`](safety.md) | The safety model: read/write separation, injection defence, approval gate. |
+| [`safety.md`](safety.md) | The safety model as built and tested: read/write separation, the proposal → gate → verification path, injection defence, the budget backstop. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |
 | [`demo.md`](demo.md) | Shot list and per-segment commands. |
 | [`blog/draft.md`](blog/draft.md) | The hackathon blog post, grown from build notes as they happen. |

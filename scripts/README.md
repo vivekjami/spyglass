@@ -18,6 +18,7 @@
 | `changepoint-check.py` | Phase 5 acceptance on the latest S1 run (`just s5-check`) | engine up |
 | `bundle-check.py` | Phase 6/7 acceptance on the latest S1 run (`just s7-check`) | engine up |
 | `replay-check.py` | Phase 8 acceptance on the latest S1 run (`just s8-check`): exemplar sanitized, replay proportions measured, ledger entries, negative control, no leakage | engine + stack up |
+| `gate-check.py` | Phase 9 acceptance, live (`just s9-check`): double-fire, approve-after-manual-rollback, expired and restated proposals, engine-judged closure and escalation, the budget backstop; leaves payments at v1 | engine + deployer + stack up |
 | `s1-curve.py` | error-rate curve for a run; `--compare` two runs against ground-truth tolerances | run snapshots in `data/scenarios/s1/` |
 | `validate-ground-truth.py` | check `ground-truth.yaml` files against `scenarios/SCHEMA.md` | PyYAML |
 

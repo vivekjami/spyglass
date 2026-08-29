@@ -262,7 +262,44 @@ This section is the honest part. Written as it happens.
   to. What it does not get is the twenty-per-version comparison with a
   threshold and a verdict. That is the treatment.
 
-### Phase 9 onward ⏳
+### Phase 9 — the gate, hardened by taking the pen away from the model
+
+- **The model's "fresh UUID" was `9b8c2d1e-3f4a-5b6c-7d8e-9f0a1b2c3d4e`.**
+  Ascending nibbles. Phase 2 saw it and wrote it down; Phase 9 removed the
+  model from the loop that mints keys. The agent *proposes* — the deployer
+  mints a v4 `proposal_id`, snapshots the live version, stamps an expiry,
+  journals it — and the gated `rollback` consumes the proposal by id. A
+  key the model cannot invent cannot collide.
+- **The human approves what they can read.** The rollback call restates
+  service, version, expected-current and the evidence ids, and the deployer
+  refuses if the restatement differs from what was minted. The runner goes
+  one step further and prints each cited evidence id's ledger line at the
+  gate: *E8: replay v2 20/20 failed*. Approving evidence, not vibes, is a
+  sentence in the README; this is what it looks like on a terminal.
+- **The harness gate never times out.** A pending approval sits in a map
+  until answered. So "an expired approval is never executed" had to be the
+  deployer's property, not the harness's: proposals expire in ten minutes,
+  and the check runs where the action runs. Tested with a one-second TTL.
+- **Every refusal is a journal line with a reason.** Double-fire → one
+  rollback, one `noop`. An operator fixes it by hand while the gate is
+  pending → `aborted: version mismatch`, no deploy id minted. Restated
+  evidence that differs → `aborted: restated proposal differs`. Expired →
+  `aborted: proposal expired`. All live, all in `just s9-check`.
+- **Recovery is not the agent's to declare.** `verify_recovery` moved the
+  verdict into the engine: three windows resolved from the journal, a
+  tolerance on the pre-incident baseline, two consecutive clean checks to
+  close, and an `escalation` entry — terminal — when the rate is no better
+  than the incident, rising, or still dirty after five minutes. The agent
+  sleeps fifteen seconds and asks again; the benchmark reads the ledger's
+  closing entry, not the prose. Re-introducing the fault right after a
+  "fix" produced exactly the trace the spec asked for: `not_recovered`, then
+  `worsening`, then stop.
+- **A budget the prompt cannot negotiate.** The engine refuses the 61st
+  call in a minute and the 201st in an investigation, with an instruction
+  to synthesise from what the agent already has. The harness's
+  `iteration_limit` sits above it; this is the floor.
+
+### Phase 10 onward ⏳
 
 ## The benchmark ⏳
 

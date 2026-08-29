@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Start / stop / status the MCP servers the agents talk to.
 #
-#   deployer  :8792  rollback (approval-required) + current_versions   -- the write plane
+#   deployer  :8792  propose_rollback, rollback (approval-required), current_versions -- the write plane
 #   rawtools  :8793  tail_logs, grep_logs, get_metric, list_services, deploy_events, http_request -- the baseline
 #   engine    :8791  build_evidence_bundle, novel_templates, detect_changepoints, error_delta, deploy_events, search_logs,
-#                    freshness_watermark, get_evidence, service_topology, get_exemplar_request, replay_exemplar -- the evidence plane
+#                    freshness_watermark, get_evidence, service_topology, get_exemplar_request, replay_exemplar, verify_recovery -- the evidence plane
 #
 # Liveness is by listening port, never by process-name grep: `pgrep -f` matches
 # the shell running this script, which is how `just mcp-up` silently did
