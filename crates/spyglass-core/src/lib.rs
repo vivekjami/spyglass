@@ -29,6 +29,7 @@ pub struct Config {
     pub ingest: Ingest,
     pub drain: DrainCfg,
     pub novelty: NoveltyCfg,
+    pub changepoints: ChangepointCfg,
     pub services: Vec<ServiceCfg>,
 }
 
@@ -48,6 +49,22 @@ pub struct NoveltyCfg {
     pub burst_log2_scale: f64,
     pub severity_boost: f64,
     pub min_score: f64,
+}
+
+/// README C4 / ADR-007. Every threshold the detector uses lives here, tuned
+/// on S1 only (Phase 5) and said so.
+#[derive(Deserialize, Clone, Debug)]
+pub struct ChangepointCfg {
+    pub bucket_secs: i64,
+    pub z_threshold: f64,
+    pub consecutive_buckets: usize,
+    pub baseline_secs: i64,
+    pub guard_secs: i64,
+    pub min_baseline_buckets: usize,
+    pub sigma_floor_count: f64,
+    pub sigma_floor_rate: f64,
+    pub sigma_floor_latency_frac: f64,
+    pub sigma_floor_latency_ms: f64,
 }
 
 #[derive(Deserialize, Clone, Debug)]

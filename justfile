@@ -60,6 +60,10 @@ watch:
 s1-check *args:
     python3 scripts/s1-curve.py --compare {{args}}
 
+# Phase 5 acceptance on the latest S1 run: fault changepoint ±10 s + D-2 annotated, decoy deploy not blamed, steady state clean.
+s5-check *args:
+    python3 scripts/changepoint-check.py {{args}}
+
 # Validate every ground-truth.yaml against scenarios/SCHEMA.md.
 validate:
     python3 scripts/validate-ground-truth.py scenarios/*/ground-truth.yaml

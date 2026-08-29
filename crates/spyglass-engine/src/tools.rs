@@ -726,3 +726,331 @@ mod novelty_tests {
         assert_eq!(novelty_score(&i, &cfg()).score, 1.0);
     }
 }
+
+// ------------------------------------------------------------------ detect_changepoints
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ChangepointArgs {
+    /// Metric families to scan: error_rate | errors_total | requests_total | latency_ms_mean. Empty = all four.
+    #[serde(default)]
+    pub metrics: Vec<String>,
+    /// Only series for this service or instance (e.g. "orders", "payments-v2"). Default: every service, route and instance.
+    pub service: Option<String>,
+    /// Only series for this route (e.g. "/orders").
+    pub route: Option<String>,
+    /// Report changepoints inside this window {from, to}. Default: the last 15 minutes of ingested data.
+    #[serde(default)]
+    pub window: WindowArg,
+    /// Compare every bucket against this FIXED window instead of the rolling guarded baseline, e.g. the incident period to ask "has it recovered?" (recovery shows as a `down` changepoint).
+    #[serde(default)]
+    pub baseline: WindowArg,
+    /// Max changepoints to return (default 20).
+    pub limit: Option<usize>,
+}
+
+fn labels_match(labels: &BTreeMap<String, String>, e: &spyglass_core::Event) -> bool {
+    labels.iter().all(|(k, v)| match k.as_str() {
+        "service" => e.service == *v,
+        "instance" => e.instance == *v,
+        "route" => e.route.as_deref() == Some(v.as_str()),
+        _ => false,
+    })
+}
+
+pub fn detect_changepoints(engine: &Engine, a: &ChangepointArgs) -> Result<(ToolOutput, Value)> {
+    use crate::changepoints::{Acc, Baseline, Direction, Kind, METRICS, Series, detect, series_from, tail_unconfirmed};
+    let cfg = &engine.cfg;
+    let ccfg = &cfg.changepoints;
+    let store = engine.store.read().expect("store lock");
+    let w = resolve(&store, cfg, a.window.given())?;
+    let explicit = match a.baseline.given() {
+        Some(b) => Some(resolve(&store, cfg, Some(b))?),
+        None => None,
+    };
+    let metrics: Vec<String> = if a.metrics.is_empty() { METRICS.iter().map(|m| m.to_string()).collect() } else { a.metrics.clone() };
+    for m in &metrics {
+        if !METRICS.contains(&m.as_str()) {
+            bail!("unknown metric '{m}'; choose from {}", METRICS.join(" | "));
+        }
+    }
+    let limit = a.limit.unwrap_or(cfg.bounds.max_items).clamp(1, cfg.bounds.max_items);
+    let bs = ccfg.bucket_secs;
+    let floor = |t: DateTime<Utc>| t.timestamp().div_euclid(bs) * bs;
+    let bucket_ts = |s: i64| DateTime::<Utc>::from_timestamp(s, 0).unwrap_or_else(Utc::now);
+    let resolved = json!({"window": w, "baseline": explicit, "metrics": metrics, "service": a.service, "route": a.route, "limit": limit});
+    let empty = |summary: String, note: &str| {
+        let payload = json!({"items": [], "window": w, "baseline_mode": if explicit.is_some() { "explicit" } else { "rolling" }, "bucket_secs": bs, "series_scanned": 0, "series_changed": 0, "note": note});
+        (ToolOutput { payload, summary, window: Some(w), deterministic: true, available: 0 }, resolved.clone())
+    };
+    let Some(earliest) = store.earliest_ts else {
+        return Ok(empty("detect_changepoints → no ingested events".into(), "no ingested events"));
+    };
+    // Bucket grid: complete buckets only. The first bucket whose start is at
+    // or after the earliest event; the last whose end is at or before the
+    // window end. A partial bucket would read as a step in every count series.
+    let hist_start = earliest.timestamp().div_euclid(bs) * bs + if earliest.timestamp() % bs == 0 && earliest.timestamp_subsec_millis() == 0 { 0 } else { bs };
+    let last_start = floor(w.to - Duration::seconds(bs));
+    let mut t0 = floor(w.from) - ccfg.baseline_secs;
+    if let Some(b) = explicit {
+        t0 = t0.min(floor(b.from));
+    }
+    let t0 = t0.max(hist_start);
+    if last_start < t0 {
+        return Ok(empty(
+            format!("detect_changepoints → no complete {bs}s buckets in window"),
+            "the window holds no complete bucket after the start of ingested history",
+        ));
+    }
+    let n = ((last_start - t0) / bs + 1) as usize;
+    let idx_of = |t: DateTime<Utc>| -> Option<usize> {
+        let ms = t.timestamp_millis() - t0 * 1000;
+        if ms < 0 { None } else { let i = (ms / (bs * 1000)) as usize; if i < n { Some(i) } else { None } }
+    };
+
+    // Accumulate the request events into per-label-set buckets.
+    let mut accs: BTreeMap<BTreeMap<String, String>, Vec<Option<Acc>>> = BTreeMap::new();
+    let lbl = |pairs: &[(&str, &str)]| pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>();
+    for e in store.events.iter().filter(|e| e.status.is_some() && e.route.is_some()) {
+        let Some(i) = idx_of(e.ts) else { continue };
+        let route = e.route.as_deref().unwrap_or("");
+        let mut keys = vec![lbl(&[("service", &e.service)]), lbl(&[("service", &e.service), ("route", route)])];
+        if e.instance != e.service {
+            keys.push(lbl(&[("instance", &e.instance)]));
+        }
+        for k in keys {
+            let v = accs.entry(k).or_insert_with(|| vec![Some(Acc::default()); n]);
+            let acc = v[i].get_or_insert_with(Acc::default);
+            acc.requests += 1;
+            acc.errors += e.status.is_some_and(|s| s >= 500) as u64;
+            if let Some(l) = e.latency_ms {
+                acc.lat_sum += l;
+                acc.lat_n += 1;
+            }
+        }
+    }
+    let wanted = |labels: &BTreeMap<String, String>| -> bool {
+        let svc_ok = a.service.as_deref().is_none_or(|s| labels.get("service").is_some_and(|v| v == s) || labels.get("instance").is_some_and(|v| v == s));
+        let route_ok = a.route.as_deref().is_none_or(|r| labels.get("route").is_some_and(|v| v == r));
+        svc_ok && route_ok
+    };
+    // A single-route service's aggregate IS its route series; emitting both
+    // would say one thing twice. Keep the route-level one (strictly more
+    // information) and drop the service-level duplicate.
+    let mut routes_by_service: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for labels in accs.keys() {
+        if let (Some(svc), Some(route)) = (labels.get("service"), labels.get("route")) {
+            routes_by_service.entry(svc.as_str()).or_default().insert(route.as_str());
+        }
+    }
+    let single_route_aggregate = |labels: &BTreeMap<String, String>| -> bool {
+        labels.len() == 1 && labels.get("service").is_some_and(|svc| routes_by_service.get(svc.as_str()).is_some_and(|r| r.len() == 1))
+    };
+    let series: Vec<Series> = accs
+        .iter()
+        .filter(|(labels, _)| wanted(labels) && !single_route_aggregate(labels))
+        .flat_map(|(labels, v)| series_from(labels.clone(), v))
+        .filter(|s| metrics.iter().any(|m| m == s.metric))
+        .collect();
+    let baseline_mode = match explicit {
+        Some(b) => {
+            let from = idx_of(b.from.max(bucket_ts(t0))).unwrap_or(0);
+            let to = idx_of(b.to - Duration::seconds(bs)).map(|i| i + 1).unwrap_or(n);
+            Baseline::Explicit(from, to)
+        }
+        None => Baseline::Rolling,
+    };
+    let corr = Duration::seconds(cfg.windows.deploy_correlation_secs);
+    let w_first_bucket = floor(w.from);
+    // Which metric speaks for a label set when several changed in the same
+    // bucket: the normalised rate first, the count, latency, then traffic.
+    let priority = |m: &str| match m { "error_rate" => 0, "errors_total" => 1, "latency_ms_mean" => 2, _ => 3 };
+
+    // One confirmed run on one series, with `at` refined where well defined.
+    struct Hit<'a> { s: &'a Series, r: crate::changepoints::Run, at: DateTime<Utc>, precision: &'static str, b_from: DateTime<Utc>, b_to: DateTime<Utc>, began_before: bool }
+    let mut hits: Vec<Hit> = Vec::new();
+    let mut series_changed = 0usize;
+    let mut tail: Vec<String> = Vec::new();
+    for s in &series {
+        let runs = detect(&s.values, s.kind, baseline_mode, ccfg);
+        if tail_unconfirmed(&s.values, s.kind, baseline_mode, ccfg) {
+            tail.push(s.key());
+        }
+        let mut any = false;
+        for r in runs {
+            let b_start = t0 + r.start as i64 * bs;
+            let b_end_run = b_start + r.len as i64 * bs;
+            // Rolling mode reports changes that BEGAN inside the window (an
+            // older change is an older change; widen the window to see it).
+            // Explicit mode is a state comparison -- "which series differ
+            // from this baseline" -- so a run still in progress when the
+            // window opens counts, and says it began earlier.
+            if b_start > last_start || (explicit.is_none() && b_start < w_first_bucket) || (explicit.is_some() && b_end_run <= w_first_bucket) {
+                continue;
+            }
+            any = true;
+            let b_from = bucket_ts(b_start);
+            let b_to = bucket_ts(b_start + bs);
+            // Refine `at` to the first anomalous event inside the first
+            // flagged bucket where that is well defined: the first 5xx for an
+            // error series going up, the first request for traffic appearing.
+            // A drop is an absence; it keeps the bucket start.
+            let refine = match (s.metric, r.direction) {
+                ("error_rate" | "errors_total", Direction::Up) => Some(true),
+                ("requests_total", Direction::Up) => Some(false),
+                _ => None,
+            };
+            let (at, precision) = match refine {
+                Some(need_5xx) => store
+                    .events
+                    .iter()
+                    .filter(|e| e.status.is_some() && e.route.is_some() && e.ts >= b_from && e.ts < b_to && labels_match(&s.labels, e))
+                    .filter(|e| !need_5xx || e.status.is_some_and(|st| st >= 500))
+                    .map(|e| e.ts)
+                    .min()
+                    .map(|t| (t, if need_5xx { "first_5xx_event_in_bucket" } else { "first_request_in_bucket" }))
+                    .unwrap_or((b_from, "bucket_start")),
+                None => (b_from, "bucket_start"),
+            };
+            hits.push(Hit { s, r, at, precision, b_from, b_to, began_before: b_start < w_first_bucket });
+        }
+        if any {
+            series_changed += 1;
+        }
+    }
+
+    // Group hits by (label set, first bucket, direction): error_rate and
+    // errors_total on the same labels are one fact, not two items.
+    let mut groups: BTreeMap<(BTreeMap<String, String>, DateTime<Utc>, &'static str), Vec<Hit>> = BTreeMap::new();
+    for h in hits {
+        groups.entry((h.s.labels.clone(), h.b_from, h.r.direction.as_str())).or_default().push(h);
+    }
+    let fmt_v = |kind: Kind, x: f64| match kind {
+        Kind::Rate => pct(x),
+        Kind::Count => format!("{:.0}/{}s", x, bs),
+        Kind::Latency => format!("{x:.1} ms"),
+    };
+    let magnitude = |r: &crate::changepoints::Run| -> Value {
+        if r.baseline_mean > 0.0 { Value::from((r.run_mean / r.baseline_mean * 10.0).round() / 10.0) } else if r.run_mean > 0.0 { Value::String("new".into()) } else { Value::Null }
+    };
+    let r4 = |x: f64| (x * 10000.0).round() / 10000.0;
+    let r1 = |x: f64| (x * 10.0).round() / 10.0;
+
+    struct Cp { key: String, at: DateTime<Utc>, z: f64, item: Value }
+    let mut cps: Vec<Cp> = Vec::new();
+    for (_, mut members) in groups {
+        members.sort_by_key(|h| priority(h.s.metric));
+        let p = &members[0];
+        let (r, s) = (&p.r, p.s);
+        // Deploy correlation, precision-aware: an event-precise `at` orders
+        // against the deploy exactly; a bucket-start `at` cannot claim to
+        // precede a deploy that landed inside the same bucket.
+        // Only journal entries inside the evidence window join: a rollback
+        // that lands seconds after the call would otherwise appear on replay
+        // and break the digest (the Phase 3 deploy_events lesson, again).
+        let mut near: Vec<&spyglass_core::DeployEvent> = store
+            .deploys
+            .iter()
+            .filter(|d| d.deploy_id.is_some() && d.ts <= w.to && (d.ts - p.at).abs() <= corr)
+            .collect();
+        near.sort_by_key(|d| ((p.at - d.ts).num_milliseconds().abs(), d.n));
+        let relation = |d: &spyglass_core::DeployEvent| -> &'static str {
+            if p.precision != "bucket_start" {
+                if p.at >= d.ts { "changepoint_after_deploy" } else { "changepoint_before_deploy" }
+            } else if d.ts < p.b_from {
+                "changepoint_after_deploy"
+            } else if d.ts < p.b_to {
+                "same_bucket_order_unresolved"
+            } else {
+                "changepoint_before_deploy"
+            }
+        };
+        let dep = |d: &spyglass_core::DeployEvent| {
+            json!({"deploy_id": d.deploy_id, "kind": d.kind, "service": d.service, "version": d.version, "from_version": d.from_version,
+                   "ts": fmt_ts(d.ts), "offset_secs": r1((p.at - d.ts).num_milliseconds() as f64 / 1000.0), "relation": relation(d)})
+        };
+        let nearest = near.first().map(|d| dep(d));
+        // The rest, compactly: the item must stay well inside the byte cap.
+        let others: Vec<String> = near.iter().skip(1)
+            .map(|d| format!("{} {} {}→{} at {:+.1} s ({})", d.deploy_id.clone().unwrap_or_default(), d.service, d.from_version.clone().unwrap_or_default(),
+                d.version.clone().unwrap_or_default(), (p.at - d.ts).num_milliseconds() as f64 / 1000.0, relation(d)))
+            .collect();
+        let mag = magnitude(r);
+        let mag_txt = match &mag { Value::Number(x) => format!("{x}×"), Value::String(_) => "from zero".into(), _ => "to zero".into() };
+        let dep_txt = match near.first() {
+            Some(d) => {
+                let off = (p.at - d.ts).num_milliseconds() as f64 / 1000.0;
+                let who = format!("{} ({} {}→{})", d.deploy_id.clone().unwrap_or_default(), d.service, d.from_version.clone().unwrap_or_default(), d.version.clone().unwrap_or_default());
+                match relation(d) {
+                    "changepoint_after_deploy" => format!("{off:+.1} s after {who}"),
+                    "changepoint_before_deploy" => format!("{:.1} s before {who}", -off),
+                    _ => format!("in the same {bs} s bucket as {who}, order unresolved"),
+                }
+            }
+            None => format!("no deploy within ±{} s", cfg.windows.deploy_correlation_secs),
+        };
+        let headline = format!("{} {} {} → {} ({}) at {}, {}", s.key(), r.direction.as_str(), fmt_v(s.kind, r.baseline_mean), fmt_v(s.kind, r.run_mean), mag_txt, fmt_ts(p.at), dep_txt);
+        let also: Vec<String> = members[1..]
+            .iter()
+            .map(|h| format!("{} {} {} → {} at {}", h.s.metric, h.r.direction.as_str(), fmt_v(h.s.kind, h.r.baseline_mean), fmt_v(h.s.kind, h.r.run_mean), fmt_ts(h.at)))
+            .collect();
+        // Compact on purpose: this response sits in the agent's context for
+        // every later model call. What a claim needs -- series, when, how
+        // big, how sure, which deploy -- and nothing that get_evidence or a
+        // narrower query would not answer better.
+        let mut item = json!({
+            "kind": "changepoint",
+            "series": s.key(),
+            "metric": s.metric,
+            "direction": r.direction.as_str(),
+            "at": fmt_ts(p.at),
+            "at_precision": p.precision,
+            "baseline_mean": r4(r.baseline_mean),
+            "run_mean": r4(r.run_mean),
+            "magnitude_x": mag,
+            "z_peak": r1(r.z_peak),
+            "run_buckets": r.len,
+            "run_until": fmt_ts(bucket_ts(t0 + (r.start + r.len) as i64 * bs)),
+            "began_before_window": p.began_before,
+            "baseline": {
+                "mode": if explicit.is_some() { "explicit" } else { "rolling" },
+                "sigma_used": r4(r.sigma_used),
+                "buckets": r.baseline_buckets,
+                "from": fmt_ts(bucket_ts(t0 + r.baseline_range.0 as i64 * bs)),
+                "to": fmt_ts(bucket_ts(t0 + r.baseline_range.1 as i64 * bs)),
+            },
+            "also_changed": also,
+            "nearest_deploy": nearest,
+            "other_deploys_nearby": others,
+            "headline": headline,
+        });
+        cap_item(&mut item, cfg.bounds.max_bytes_per_item);
+        cps.push(Cp { key: s.key(), at: p.at, z: r.z_first, item });
+    }
+    // Documented order: at asc (the earliest change is the likeliest origin),
+    // |z| desc, series key asc.
+    cps.sort_by(|x, y| x.at.cmp(&y.at).then(y.z.abs().partial_cmp(&x.z.abs()).unwrap_or(std::cmp::Ordering::Equal)).then(x.key.cmp(&y.key)));
+    let available = cps.len();
+    let items: Vec<Value> = cps.iter().take(limit).map(|c| c.item.clone()).collect();
+    let top = cps.first().map(|c| c.item["headline"].as_str().unwrap_or("").to_string());
+    let summary = match &top {
+        Some(h) => format!("detect_changepoints → {} changepoint(s) ({} series changed of {}); #1: {}", available, series_changed, series.len(), h),
+        None => format!("detect_changepoints → no changepoints on {} series in window{}", series.len(), if tail.is_empty() { "" } else { " (newest bucket flagged, unconfirmed)" }),
+    };
+    tail.sort();
+    let payload = json!({
+        "items": items,
+        "window": w,
+        "baseline_mode": if explicit.is_some() { "explicit" } else { "rolling" },
+        "baseline": explicit,
+        "bucket_secs": bs,
+        "history_start": fmt_ts(earliest),
+        "buckets_evaluated": n,
+        "series_scanned": series.len(),
+        "series_changed": series_changed,
+        "unconfirmed_tail": tail.iter().take(5).collect::<Vec<_>>(),
+        "unconfirmed_tail_count": tail.len(),
+        "detector": "zscore_v0",
+        "note": "a changepoint is >= 2 consecutive 10 s buckets at |z| >= 4 vs a guarded rolling baseline; one item per label set / bucket / direction, other metrics that moved with it in also_changed, single-route service aggregates folded into their route; `at` is the first flagged bucket refined to its first anomalous event where well defined; deploy offsets are correlation, not cause",
+    });
+    Ok((ToolOutput { payload, summary, window: Some(w), deterministic: true, available }, resolved))
+}
