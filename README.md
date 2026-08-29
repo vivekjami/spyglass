@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–10 complete (the benchmark has run; results below are generated from committed run files); live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–11 complete — the benchmark has run (36/36 runs committed; results below are generated from them), the demo is hardened (`just demo` from a clean clone, [`docs/demo.md`](docs/demo.md) runbook), the submission text is in [`docs/submission.md`](docs/submission.md); live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -44,11 +44,12 @@ Honesty conventions used throughout: `[MEASURE AFTER IMPLEMENTATION]` marks numb
 27. [Judging Alignment](#judging-alignment)
 28. [Enterprise Relevance](#enterprise-relevance)
 29. [Documentation Plan](#documentation-plan)
-30. [Definition of Done](#definition-of-done)
-31. [Build Order](#build-order)
-32. [Future Work and Long-Term Questions](#future-work-and-long-term-questions)
-33. [Final Summary](#final-summary)
-34. [Sources](#sources)
+30. [Qodo Code Review Evidence](#qodo-code-review-evidence)
+31. [Definition of Done](#definition-of-done)
+32. [Build Order](#build-order)
+33. [Future Work and Long-Term Questions](#future-work-and-long-term-questions)
+34. [Final Summary](#final-summary)
+35. [Sources](#sources)
 
 ---
 
@@ -719,13 +720,13 @@ spyglass/                         ✓ built   ○ planned (phase)
 ├── ledger/                       ✓ per-investigation JSONL + evidence records (gitignored; written by the engine)
 ├── docs/
 │   ├── README.md motivation.md architecture.md progress.md     ✓
-│   ├── phase0-findings.md phase1-findings.md                    ✓ per-phase records
-│   ├── safety.md benchmark.md demo.md                           ✓ scaffolds, filled by their phases
-│   ├── adr/                      ✓ 001–009 015 016 017 in full; the rest indexed, expanded when confronted
-│   └── blog/draft.md             ✓ grown incrementally
+│   ├── phase0-findings.md … phase11-findings.md                 ✓ one record per phase
+│   ├── safety.md benchmark.md demo.md submission.md             ✓ as built: the safety model, the generated results, the filming runbook + narration, the form
+│   ├── adr/                      ✓ 001–013 015 016 017 in full; 014 recorded in this README (a scope boundary, never confronted)
+│   └── blog/draft.md             ✓ finalized: hypothesis, what broke, results incl. the negative ones, limitations
 ├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, ledger-check.py, changepoint-check.py, bundle-check.py, mcp_client.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
 ├── data/                         · runtime only, gitignored: logs, deploy state, scenario run snapshots
-└── .github/workflows/ci.yml      ○ fmt, clippy, tests, s1 smoke (P11)
+└── .github/workflows/ci.yml      ✓ fmt, clippy (-D warnings), tests, ground-truth validation, generated tables == committed runs (P11); the S1 smoke needs Docker + the harness + a key and stays manual (`just demo`)
 ```
 
 Every directory has exactly one responsibility; anything that wants to live in two places is a design smell to resolve in a PR, not in ambiguity.
@@ -740,7 +741,7 @@ on a clean machine — see `docs/phase0-findings.md`:
 | Requirement | Why | How |
 |---|---|---|
 | **Node ≥ 22.14** | TrueForge declares `engines: node >=22`; Ubuntu ships 20.x | `scripts/install-node22.sh` (no root; installs to `~/.local/node-v22`) |
-| **`bwrap`, `socat`, `rg`** | TrueForge's *local* sandbox needs all three, else it silently disables the sandbox — and with it the causal-replay step | `scripts/install-sandbox-deps.sh` (no root) |
+| **`bwrap`, `socat`, `rg`** | TrueForge's *local* sandbox needs all three, else it silently disables the sandbox | `scripts/install-sandbox-deps.sh` (no root) — **plus one root step**: `sudo install -m 0755 ~/.local/bin/socat /usr/local/bin/socat`. The harness runs the sandbox's proxy bridge *inside* the sandbox, where only `/usr`, `/bin`, `/lib`, `/etc`… are readable; a `socat` in `$HOME` passes the start-up check and then every sandboxed command fails at bootstrap (Phase 11 F1) |
 | **`just`** | every workflow command (`just scenario s1`, `just demo`) | `scripts/install-just.sh` (no root) |
 | Rust ≥ 1.94, Docker + Compose, Python 3.12 + PyYAML | engine, target system, scenario tooling | distro packages |
 | Free host ports | gateway/orders/payments publish on 127.0.0.1:8080–8083 by default; **8080 is often taken** | set `GATEWAY_PORT` etc. in `.env` |
@@ -1069,27 +1070,79 @@ How a company like TrueFoundry **could** derive value from this capability class
 
 ---
 
+## Qodo Code Review Evidence
+
+**Every substantive change went through a pull request; none was pushed to
+`main` directly.** The trail is eleven stacked PRs, one per phase, each merged
+into the branch below it: [#1](https://github.com/vivekjami/spyglass/pull/1)
+(harness validation) → [#2](https://github.com/vivekjami/spyglass/pull/2)
+(incident environment) → [#3](https://github.com/vivekjami/spyglass/pull/3)
+(baseline) → [#4](https://github.com/vivekjami/spyglass/pull/4) (the loop) →
+[#5](https://github.com/vivekjami/spyglass/pull/5) (novelty) →
+[#6](https://github.com/vivekjami/spyglass/pull/6) (changepoints) →
+[#7](https://github.com/vivekjami/spyglass/pull/7) (ranking + bundles) →
+[#8](https://github.com/vivekjami/spyglass/pull/8) (causal replay) →
+[#9](https://github.com/vivekjami/spyglass/pull/9) (hardened gate) →
+[#10](https://github.com/vivekjami/spyglass/pull/10) (benchmark) →
+[#11](https://github.com/vivekjami/spyglass/pull/11) (demo hardening — this
+section, the CI workflow, and the review findings below).
+
+**What the automated reviewer surfaced, and what was done with it.** The
+review bot that answered on PRs #1–#4 was GitHub Copilot — Qodo Merge had
+not been authorized on the repository at that point (see the status line at
+the end of this section); its fifteen findings are representative of what a
+reviewer catches under deadline pressure and are all addressed in PR #11:
+
+| # | PR | Finding | Outcome |
+|---|---|---|---|
+| 1 | #1 | `scripts/trueforge.sh` sources `env.sh` under `set -u` without `-e`; a missing Node fails later and less clearly | **Fixed** — `source … \|\| exit 1` |
+| 2 | #1 | `port_pid` used `grep -P` (PCRE), not portable | **Fixed** — POSIX `sed` |
+| 3 | #1 | The harness started as `@latest`: non-reproducible, can break silently | **Fixed** — pinned to the validated `0.1.4`; `TRUEFORGE_VERSION` overrides deliberately |
+| 4 | #1 | Second `trap … EXIT` overwrote the first; a temp dir leaked when both installs ran | **Fixed** — one scratch dir, one trap |
+| 5 | #1 | An empty `grep` against `SHASUMS256.txt` let `sha256sum -c` "verify" nothing | **Fixed** — a missing line is an error |
+| 6 | #1 | Header claimed *signed* checksum verification; no `.sig` was checked | **Fixed** (comment): the script verifies the sha256 over HTTPS and says so; signature verification would need the Node release keys — dismissed as out of scope for a no-root installer |
+| 7 | #1 | `tf.output_text` assumed `state.output` is a dict | **Fixed** — string outputs are returned as-is |
+| 8 | #1 | socat fetched over plain HTTP, no integrity check | **Fixed** — pinned sha256 (the value Homebrew and Alpine publish, checked against both mirrors); dest-unreach.org's HTTPS certificate is self-signed, so HTTP + pin is the honest option |
+| 9 | #2 | `urlopen` not closed in the watcher's poll loop | **Fixed** — context manager |
+| 10 | #2 | `install-just.sh` asked the GitHub API for the latest tag (anonymous rate limits) | **Fixed** — pinned to `1.58.0`; `JUST_VERSION=latest` asks the API |
+| 11 | #2 | `bash scenarios/{{name}}-*/inject.sh` is ambiguous if two directories share a prefix | **Fixed** — the recipe resolves exactly one directory or fails |
+| 12 | #3 | `tool_bytes()` counts JSON quoting/escaping, not the bytes the model sees | **Dismissed, documented** — the encoded length is what the harness places in the context; it is measured identically across conditions and reported as a comparative number (`bench/README.md`) |
+| 13 | #3 | Deployer rollback failures surfaced as *invalid params* | **Fixed** — refusals are journaled `aborted` results; an `Err` is now an internal error |
+| 14 | #3 | `current_versions` swallowed serialization failures into an empty success | **Fixed** — internal error |
+| 15 | #4 | `deploy_events`' default window ends at the *log* watermark, so a journal entry newer than the logs can be missed | **Dismissed with a reason** — the default window ends at the engine's *safe* watermark on purpose: ADR-004's ledger re-check needs the default window to be a function of the ingested data, and the ingest tails logs and journal at the same cadence (≤ 1 s). The deploy was inside the default window in every one of the 36 benchmark runs; an explicit `to` is the documented way to ask for more |
+
+Copilot's quota lapsed after PR #4 ("unable to review … quota limit" on
+#5–#9); those PRs carry the phase findings documents as their review record.
+
+**Qodo status:** Qodo Merge was not installed on the repository when PRs
+#1–#9 merged. PRs #10 and #11 are held open so that Qodo Merge can be
+authorized and review both before they merge; this line is updated with the
+review links when that happens (`docs/phase11-findings.md` records the
+outcome either way).
+
+---
+
 ## Definition of Done
 
 ### Mandatory — the submission does not ship without every box
 
-- [ ] TrueForge runs from a clean environment (documented commands)
-- [ ] Spyglass MCP server connects; tools invocable from a session
-- [ ] Synthetic incident S1 reproduces deterministically (twice, from clean state)
-- [ ] Baseline agent completes an investigation with metrics captured (and footage recorded)
-- [ ] Spyglass agent completes an investigation end-to-end
-- [ ] Engine returns bounded evidence with eids, digests, latency on every response
-- [ ] Novelty detection surfaces S1's seeded signature at rank 1
-- [ ] Agent produces an RCA whose claims cite eids
-- [ ] Human approval gate demonstrably gates the rollback
-- [ ] Rollback is idempotent (double-fire test passes) and TOCTOU-checked
-- [ ] Recovery is verified from telemetry before incident close
+- [x] TrueForge runs from a clean environment (documented commands — Setup Prerequisites; P0, re-run from a clean clone in P11)
+- [x] Spyglass MCP server connects; tools invocable from a session (P0, P3)
+- [x] Synthetic incident S1 reproduces deterministically (twice, from clean state — byte-identical curves; P1)
+- [~] Baseline agent completes an investigation with metrics captured (P2; 12 benchmark runs) — footage: operator, per `docs/demo.md`
+- [x] Spyglass agent completes an investigation end-to-end (P3; 24 benchmark runs)
+- [x] Engine returns bounded evidence with eids, digests, latency on every response (P3, P5, P7)
+- [x] Novelty detection surfaces S1's seeded signature at rank 1 (P4)
+- [x] Agent produces an RCA whose claims cite eids (every Spyglass run; 7–22 eids each — P10)
+- [x] Human approval gate demonstrably gates the rollback (P0 F4; P9 deny path)
+- [x] Rollback is idempotent (double-fire test passes) and TOCTOU-checked (P9, `just s9-check`)
+- [x] Recovery is verified from telemetry before incident close (P9; the engine judges — and P10 F6d records the metric gap it still has)
 - [x] Benchmark runs reproducibly: {baseline, spyglass} × {S1,S2,S3} × 3, raw runs committed (P10; plus S6 and the ablation)
 - [x] Results documented in `docs/benchmark.md`, generated not hand-written (`bench/report.py`)
-- [ ] Ledger digests re-check against frozen scenario data
-- [ ] `just demo` succeeds from a clean clone on a second machine
-- [ ] Qodo evidence section complete; every substantive change via reviewed PR
-- [ ] ≤3:00 demo video uploaded; submission confirmed before 22:00 IST Sunday
+- [x] Ledger digests re-check against frozen scenario data (`just ledger-check`; 9/9 Spyglass benchmark runs PASS — P10 F6e)
+- [~] `just demo` succeeds from a clean clone — on the build host with the working copy's stack stopped (P11 F3); a second machine was not available
+- [~] Qodo evidence section complete; every substantive change via reviewed PR — the section is written and every finding answered; **Qodo Merge itself still has to be authorized by the repository owner** (see the section)
+- [ ] ≤3:00 demo video uploaded; submission confirmed before 22:00 IST Sunday — operator (`docs/demo.md`, `docs/submission.md`)
 
 ### Optional — upside, in drop-order-reverse priority
 
