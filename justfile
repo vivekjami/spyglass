@@ -34,10 +34,11 @@ clean:
 # Run a scenario from clean state: `just scenario s1` (s1 | s2 | s3 | s6). SCENARIO_FAST=1 (or S1_FAST=1) shortens the timeline.
 # The evidence engines are restarted before the injection so their history is the scenario's alone.
 scenario name:
+    @n=$(ls -d scenarios/{{name}}-*/ 2>/dev/null | wc -l); [ "$n" -eq 1 ] || { echo "error: expected exactly one scenarios/{{name}}-*/ directory, found $n" >&2; exit 1; }
     just clean
     just up
     scripts/mcp.sh restart
-    bash scenarios/{{name}}-*/inject.sh
+    bash "$(ls -d scenarios/{{name}}-*/)inject.sh"
 
 # Start the MCP servers the agents use: engine (evidence plane, :8791), deployer (rollback, :8792), rawtools (baseline, :8793), ablation engine (A1, :8794).
 mcp-up:

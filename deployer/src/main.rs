@@ -126,24 +126,46 @@ pub struct RollbackArgs {
 pub struct DeployerMcp {
     store: std::sync::Arc<Mutex<Store>>,
     ttl_secs: i64,
+    #[allow(dead_code)] // read by rmcp's #[tool_router]/#[tool_handler] macros
     tool_router: ToolRouter<DeployerMcp>,
 }
 
 fn json_text(v: serde_json::Value) -> Result<CallToolResult, McpError> {
-    Ok(CallToolResult::success(vec![ContentBlock::text(v.to_string())]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(
+        v.to_string(),
+    )]))
 }
 
 #[tool_router]
 impl DeployerMcp {
     fn new(store: Store, ttl_secs: i64) -> Self {
-        Self { store: std::sync::Arc::new(Mutex::new(store)), ttl_secs, tool_router: Self::tool_router() }
+        Self {
+            store: std::sync::Arc::new(Mutex::new(store)),
+            ttl_secs,
+            tool_router: Self::tool_router(),
+        }
     }
 
-    #[tool(description = "Record a rollback PROPOSAL (no routing change): validates the target, snapshots the current version, mints the proposal_id that the gated `rollback` consumes, stamps an expiry, journals it. Pass service, to_version and the evidence ids that justify it. Returns the proposal to restate at the gate.")]
-    fn propose_rollback(&self, Parameters(a): Parameters<ProposeArgs>) -> Result<CallToolResult, McpError> {
-        let store = self.store.lock().map_err(|_| McpError::internal_error("store lock poisoned", None))?;
-        let p = deployer::propose(&store, &a.service, &a.to_version, a.justification_eids, "agent", self.ttl_secs)
-            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+    #[tool(
+        description = "Record a rollback PROPOSAL (no routing change): validates the target, snapshots the current version, mints the proposal_id that the gated `rollback` consumes, stamps an expiry, journals it. Pass service, to_version and the evidence ids that justify it. Returns the proposal to restate at the gate."
+    )]
+    fn propose_rollback(
+        &self,
+        Parameters(a): Parameters<ProposeArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| McpError::internal_error("store lock poisoned", None))?;
+        let p = deployer::propose(
+            &store,
+            &a.service,
+            &a.to_version,
+            a.justification_eids,
+            "agent",
+            self.ttl_secs,
+        )
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
         json_text(serde_json::json!({
             "proposal_id": p.request_id,
             "service": p.service, "to_version": p.version, "expected_current": p.expected_current,
@@ -153,13 +175,34 @@ impl DeployerMcp {
     }
 
     /// The ONE mutating action. Approval-required in the agent manifest.
-    #[tool(description = "Execute an approved rollback PROPOSAL. MUTATING; requires human approval. Pass the proposal_id from propose_rollback and restate service, to_version, expected_current and justification_eids so the approver reads them here. Idempotent on proposal_id (a repeat is a recorded no-op); refused -- and journaled as aborted -- if the restatement differs from the proposal, the proposal has expired, or the live version is no longer expected_current. Returns the journal entry and an outcome: executed | noop | aborted.")]
-    fn rollback(&self, Parameters(a): Parameters<RollbackArgs>) -> Result<CallToolResult, McpError> {
-        let pid = Uuid::parse_str(&a.proposal_id)
-            .map_err(|e| McpError::invalid_params(format!("proposal_id must be the UUID minted by propose_rollback: {e}"), None))?;
-        let store = self.store.lock().map_err(|_| McpError::internal_error("store lock poisoned", None))?;
-        let restated = Restated { service: a.service, to_version: a.to_version, expected_current: a.expected_current, justification_eids: a.justification_eids };
-        let (entry, outcome) = deployer::execute(&store, pid, &restated, "agent").map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+    #[tool(
+        description = "Execute an approved rollback PROPOSAL. MUTATING; requires human approval. Pass the proposal_id from propose_rollback and restate service, to_version, expected_current and justification_eids so the approver reads them here. Idempotent on proposal_id (a repeat is a recorded no-op); refused -- and journaled as aborted -- if the restatement differs from the proposal, the proposal has expired, or the live version is no longer expected_current. Returns the journal entry and an outcome: executed | noop | aborted."
+    )]
+    fn rollback(
+        &self,
+        Parameters(a): Parameters<RollbackArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let pid = Uuid::parse_str(&a.proposal_id).map_err(|e| {
+            McpError::invalid_params(
+                format!("proposal_id must be the UUID minted by propose_rollback: {e}"),
+                None,
+            )
+        })?;
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| McpError::internal_error("store lock poisoned", None))?;
+        let restated = Restated {
+            service: a.service,
+            to_version: a.to_version,
+            expected_current: a.expected_current,
+            justification_eids: a.justification_eids,
+        };
+        // Refusals (unknown proposal, restatement mismatch, expiry, version moved) are
+        // journaled `aborted` entries returned as Ok; an Err here is the journal or
+        // state file failing, which is the server's fault, not the caller's.
+        let (entry, outcome) = deployer::execute(&store, pid, &restated, "agent")
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         json_text(serde_json::json!({
             "outcome": outcome,
             "journal_entry": entry,
@@ -171,11 +214,20 @@ impl DeployerMcp {
         }))
     }
 
-    #[tool(description = "Read-only: which version each service is currently routed to, and the deploy id that put it there.")]
+    #[tool(
+        description = "Read-only: which version each service is currently routed to, and the deploy id that put it there."
+    )]
     fn current_versions(&self) -> Result<CallToolResult, McpError> {
-        let store = self.store.lock().map_err(|_| McpError::internal_error("store lock poisoned", None))?;
-        let state = store.load_state().map_err(|e| McpError::internal_error(e.to_string(), None))?;
-        Ok(CallToolResult::success(vec![ContentBlock::text(serde_json::to_string(&state).unwrap_or_default())]))
+        let store = self
+            .store
+            .lock()
+            .map_err(|_| McpError::internal_error("store lock poisoned", None))?;
+        let state = store
+            .load_state()
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let text = serde_json::to_string(&state)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 }
 
@@ -211,10 +263,27 @@ fn main() -> Result<()> {
                 Ok(())
             }
         },
-        Cmd::Deploy { service, version, actor } => emit(&deployer::deploy(&store, &service, &version, &actor)?),
-        Cmd::Rollback { service, to_version, request_id, expected_current, actor, justification_eids } => {
+        Cmd::Deploy {
+            service,
+            version,
+            actor,
+        } => emit(&deployer::deploy(&store, &service, &version, &actor)?),
+        Cmd::Rollback {
+            service,
+            to_version,
+            request_id,
+            expected_current,
+            actor,
+            justification_eids,
+        } => {
             let (e, outcome) = deployer::rollback(
-                &store, &service, &to_version, request_id, expected_current.as_deref(), &actor, justification_eids,
+                &store,
+                &service,
+                &to_version,
+                request_id,
+                expected_current.as_deref(),
+                &actor,
+                justification_eids,
             )?;
             emit(&e)?;
             if outcome == RollbackOutcome::Aborted {
@@ -222,11 +291,23 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Propose { service, to_version, justification_eids, actor, ttl_secs } => {
-            emit(&deployer::propose(&store, &service, &to_version, justification_eids, &actor, ttl_secs)?)
-        }
+        Cmd::Propose {
+            service,
+            to_version,
+            justification_eids,
+            actor,
+            ttl_secs,
+        } => emit(&deployer::propose(
+            &store,
+            &service,
+            &to_version,
+            justification_eids,
+            &actor,
+            ttl_secs,
+        )?),
         Cmd::Execute { proposal_id, actor } => {
-            let p = deployer::find_proposal(&store, proposal_id)?.ok_or_else(|| anyhow::anyhow!("unknown proposal_id {proposal_id}"))?;
+            let p = deployer::find_proposal(&store, proposal_id)?
+                .ok_or_else(|| anyhow::anyhow!("unknown proposal_id {proposal_id}"))?;
             let restated = Restated {
                 service: p.service.clone(),
                 to_version: p.version.clone().unwrap_or_default(),
@@ -243,7 +324,14 @@ fn main() -> Result<()> {
         Cmd::Current { service } => {
             let state = store.load_state()?;
             match service {
-                Some(s) => println!("{}", serde_json::to_string(state.get(&s).ok_or_else(|| anyhow::anyhow!("unknown service"))?)?),
+                Some(s) => println!(
+                    "{}",
+                    serde_json::to_string(
+                        state
+                            .get(&s)
+                            .ok_or_else(|| anyhow::anyhow!("unknown service"))?
+                    )?
+                ),
                 None => println!("{}", serde_json::to_string_pretty(&state)?),
             }
             Ok(())
@@ -254,14 +342,19 @@ fn main() -> Result<()> {
             }
             Ok(())
         }
-        Cmd::Serve { port, proposal_ttl_secs } => serve(store, port, proposal_ttl_secs),
+        Cmd::Serve {
+            port,
+            proposal_ttl_secs,
+        } => serve(store, port, proposal_ttl_secs),
     }
 }
 
 #[tokio::main]
 async fn serve(store: Store, port: u16, ttl_secs: i64) -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .init();
     let ct = tokio_util::sync::CancellationToken::new();
     let mcp = DeployerMcp::new(store, ttl_secs);
@@ -273,7 +366,9 @@ async fn serve(store: Store, port: u16, ttl_secs: i64) -> Result<()> {
     let router = axum::Router::new().nest_service("/mcp", service);
     let addr = format!("127.0.0.1:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    tracing::info!("deployer MCP server (propose_rollback, rollback, current_versions; proposal ttl {ttl_secs}s) on http://{addr}/mcp");
+    tracing::info!(
+        "deployer MCP server (propose_rollback, rollback, current_versions; proposal ttl {ttl_secs}s) on http://{addr}/mcp"
+    );
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
             let _ = tokio::signal::ctrl_c().await;
