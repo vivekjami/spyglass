@@ -196,7 +196,33 @@ This section is the honest part. Written as it happens.
   came out in causal order from `at` ascending alone: payments, orders 5 ms
   later, gateway 3 ms after that.
 
-### Phase 6 onward ⏳
+### Phases 6–7 — ranking, and the bundle that replaced three calls
+
+- **The weights as specified put the decoy above the deploy.** By score
+  alone, S1's novel-but-harmless INFO template (0.856) outranks the fault
+  deploy (0.805): with severity at 0.10, novelty wins. What puts the three
+  key facts in the top three is a diversity rule — the best template, the
+  best changepoint, the best deploy first — and every item says where it
+  would sit by score alone. Recorded, not tuned: one scenario is not a
+  tuning set.
+- **Zeroing the novelty weight moved every score and no position.** Every
+  candidate in S1's incident window is first-seen — the templates, the
+  error series from zero, the deploys. Novelty is a constant there. The
+  acceptance said "visibly reorders"; what S1 can prove is that every score
+  drops by exactly `w_n` and the ledger carries the weights. Said so.
+- **Same fact, once.** Five novel ERROR templates share the request ids of
+  the same failing checkouts; four error-rate steps land within
+  milliseconds on connected services. Two facts, each with its cascade
+  listed inside. 8,747 events → 6 items, 2.7 MB → 5.6 kB.
+- **Relationships by ref, not eid.** Evidence ids are per investigation and
+  stripped from digests; linking items by eid would have put the session's
+  numbering back into the digest and broken the re-check.
+- **A query issued mid-rebuild sees a partial world.** The first bundle
+  check ran four seconds after an engine restart and "lost" the payments
+  template — the file had not been read yet. The engine now says
+  `caught_up`, and the checks wait for it.
+
+### Phase 8 onward ⏳
 
 ## The benchmark ⏳
 

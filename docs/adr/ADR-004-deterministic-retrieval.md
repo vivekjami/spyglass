@@ -54,3 +54,15 @@ Every read tool is deterministic on frozen data, by construction:
 ## Reversal conditions
 
 None — this is a correctness property.
+
+## Addendum (Phase 7): the live edge
+
+A window that ends at the *newest* ingested timestamp is not frozen: the
+tailer reads the files one after another, so a line written to an
+already-read file milliseconds before another file's newest line is inside
+the window and not yet in the store; the replay sees it and the digest
+moves (Phase 7 F6 — one event, 227 bytes; Phase 3's single mismatch was
+very likely the same). Windows now resolve their end at the **safe
+watermark** — the newest timestamp every active source has been read past
+— and a requested end beyond it is clamped and recorded as clamped. Idle
+sources (more than 5 s behind the newest) do not hold it back.

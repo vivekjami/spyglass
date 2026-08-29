@@ -82,8 +82,15 @@ fact, computed by the engine, with `nearest_deploy.relation:
 changepoint_after_deploy`. Zoom on the cascade order (payments → orders →
 gateway, milliseconds apart) and `engine_latency_ms`.
 
-Missing until their phases land: the bundle's reduction ratio (P7) and the
-sandbox experiment (P8 — 1:30–2:00 stays unfilmed until then).
+**The bundle frame (0:45–1:00) ✅ available (Phase 7).** The
+`build_evidence_bundle` response: `coverage.events_scanned` → `items_returned`
+(*8,747 events → 6 items* on the fast timeline; larger on the default one —
+read the number off the screen, never type it), the head — template, changepoint,
+deploy — with `score` and `factors` on each, and `relationships` showing
+`D-2 -[precedes_within_120s +0.6 s]->` the template and the changepoint.
+
+Missing until its phase lands: the sandbox experiment (P8 — 1:30–2:00 stays
+unfilmed until then).
 
 ### 1:30–2:00 — Sandbox experiment — Phase 8
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
