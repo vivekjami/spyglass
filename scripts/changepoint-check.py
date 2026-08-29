@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -53,8 +54,14 @@ def latest_run() -> Path:
     return runs[-1]
 
 
+def series_labels(series: str) -> dict:
+    """`error_rate{route="/orders",service="orders"}` -> {"route": "/orders", "service": "orders"}"""
+    inner = series[series.index("{") + 1:series.rindex("}")] if "{" in series else ""
+    return dict(re.findall(r'(\w+)="([^"]*)"', inner))
+
+
 def series_matches(item: dict, labels: dict) -> bool:
-    return all(item.get("labels", {}).get(k) == v for k, v in labels.items())
+    return all(series_labels(item["series"]).get(k) == v for k, v in labels.items())
 
 
 def main() -> None:
@@ -99,7 +106,7 @@ def main() -> None:
         nd = best.get("nearest_deploy") or {}
         dep_ok = nd.get("deploy_id") == fault_id and 0 <= nd.get("offset_secs", -1) <= gt_corr["changepoint_after_deploy_secs_max"]
         print(f"    -> {best['series']}: at {best['at']} ({off:+.1f} s vs truth; spec ±{a.tolerance:.0f}, ground truth ±{gt_cp['tolerance_secs']}), "
-              f"magnitude {mag} (>= {gt_cp['magnitude_min_x']}), z {best['z']}, nearest deploy {nd.get('deploy_id')} {nd.get('offset_secs')} s")
+              f"magnitude {mag} (>= {gt_cp['magnitude_min_x']}), z peak {best['z_peak']}, nearest deploy {nd.get('deploy_id')} {nd.get('offset_secs')} s")
         if abs(off) > a.tolerance:
             fails.append(f"FAULT: changepoint {off:+.1f} s from truth exceeds ±{a.tolerance} s")
         if not mag_ok:
