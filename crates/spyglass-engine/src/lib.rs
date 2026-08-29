@@ -5,9 +5,12 @@
 //! is rebuilt from the source log files on start; segment files are written
 //! as a durable copy but not yet read back. Templates are masking-based
 //! then routed through a Drain tree (Phase 4) that owns template identity.
-//! Metrics are ingested and watermarked but not yet used by a tool (Phase 5
-//! adds changepoints).
+//! Changepoints (Phase 5) are detected on request series derived from the
+//! events -- event-time stamped and rebuilt on start, so deterministic; the
+//! scraped Prometheus counters are ingested and watermarked for freshness
+//! (ADR-007 says why they are not the detector's input).
 
+pub mod changepoints;
 pub mod drain;
 pub mod ingest;
 pub mod tools;

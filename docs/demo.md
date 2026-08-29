@@ -74,9 +74,16 @@ page — rank 1 the seeded ERROR template with `has_stack: true` and
 single digits. Zoom on `novelty_reason: first_seen_in_window` and the
 `instances: ["payments-v2"]` line.
 
-Missing until their phases land: the changepoint "+N s after D-2" line (P5),
-the bundle's reduction ratio (P7), and the sandbox experiment (P8 — 1:30–2:00
-stays unfilmed until then).
+**The changepoint line (1:00–1:15) ✅ available (Phase 5).** The
+`detect_changepoints` response: item 1's `headline` reads
+*`error_rate{route="/charge",service="payments"} up 0.0% → 17.1% (from zero)
+at …, +0.6 s after D-2 (payments v1→v2)`* — the spec's "+118 s after deploy"
+fact, computed by the engine, with `nearest_deploy.relation:
+changepoint_after_deploy`. Zoom on the cascade order (payments → orders →
+gateway, milliseconds apart) and `engine_latency_ms`.
+
+Missing until their phases land: the bundle's reduction ratio (P7) and the
+sandbox experiment (P8 — 1:30–2:00 stays unfilmed until then).
 
 ### 1:30–2:00 — Sandbox experiment — Phase 8
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)

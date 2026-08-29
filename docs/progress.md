@@ -9,9 +9,9 @@ IST** (Sun 20:00 London), internal deadline **Sun Aug 30, 22:00 IST**.
 | P0 harness validation | Thu eve | Fri 15:50–17:45 | 6/7 items pass; sandbox reach fails by design, fallback written; free-tier key blocker found and resolved | [phase0-findings.md](phase0-findings.md) · [PR #1](https://github.com/vivekjami/spyglass/pull/1) |
 | P1 incident environment | Fri 09–13 | Fri 17:50–19:20 | Acceptance PASS on fast and default timelines; default-timeline runs byte-identical | [phase1-findings.md](phase1-findings.md) · [PR #2](https://github.com/vivekjami/spyglass/pull/2) |
 | P2 naive baseline | Fri 13–16 | Sat 07:30–09:00 | Baseline **solved S1** in 39.5 s / 19 calls / 198k in-tokens — correct RCA, verified rollback. The foil did not drown; the comparison on S1 is cost, not correctness. Filming pending (operator) | [phase2-findings.md](phase2-findings.md) · PR #3 |
-| P3 minimal Spyglass loop (ugly-but-complete) | Fri 16–23 | Sat 08:00–09:45 | **Loop closed**: `just demo` → cited RCA → gated rollback → verified recovery → ledger re-check 7/7 PASS. Tokens not improved vs baseline (228k vs 198k) — recorded as the number to beat | [phase3-findings.md](phase3-findings.md) · PR #4 |
-| P4 novelty | Sat 09–12 | Sat 09:50–11:30 | `novel_templates` rank 1 with `first_seen` +0.1 s; quiet windows clean after two guards the FP check found; agent run **141.6k in-tokens, 12 calls** — 28% below baseline, 38% below P3; 14/14 eids cited | [phase4-findings.md](phase4-findings.md) · PR #5 |
-| P5 changepoints | Sat 09–12 | — | | |
+| P3 minimal Spyglass loop (ugly-but-complete) | Fri 16–23 | Sat 08:00–09:07 | **Loop closed**: `just demo` → cited RCA → gated rollback → verified recovery → ledger re-check 7/7 PASS. Tokens not improved vs baseline (228k vs 198k) — recorded as the number to beat | [phase3-findings.md](phase3-findings.md) · PR #4 |
+| P4 novelty | Sat 09–12 | Sat 09:10–09:45 | `novel_templates` rank 1 with `first_seen` +0.1 s; quiet windows clean after two guards the FP check found; agent run **141.6k in-tokens, 12 calls** — 28% below baseline, 38% below P3; 14/14 eids cited | [phase4-findings.md](phase4-findings.md) · PR #5 |
+| P5 changepoints | Sat 09–12 | Sat 09:55–14:00 (incl. a 2.5 h host suspend mid-phase) | `detect_changepoints` localises S1 to **+0.5 s**, `D-2` annotated, cascade in causal order; decoy deploy on nothing; 10.7 idle minutes → 0 changepoints; 23 unit tests; agent run re-checks 5/5 and cites changepoint offsets, but S1 tokens rose to 222.6k (the tool adds evidence, not savings, where novelty already answers — S2 is its case). Series from the logs (deterministic), guard 30 s, precision-aware deploy relation — three spec corrections | [phase5-findings.md](phase5-findings.md) · PR #6 |
 | P6 ranking | Sat 12–14 | — | | |
 | P7 bundles | Sat 12–14 | — | | |
 | P8 causal replay | Sat 14–18 | — | executor decision open (P0 F9) | |
@@ -19,9 +19,9 @@ IST** (Sun 20:00 London), internal deadline **Sun Aug 30, 22:00 IST**.
 | P10 benchmark | Sun 09–13 | — | | |
 | P11 demo + submission | Sun 13–22 | — | | |
 
-**Schedule position after P4:** Sat 11:30 IST vs the spec's Sat 12:00 — back
-on the calendar for the first time. ~34.5 h to the internal deadline. Next:
-changepoints (P5), ranking + bundles (P6/P7), the causal check (P8),
+**Schedule position after P5:** Sat 14:00 IST vs the spec's Sat 12:00 — two
+hours behind after a host suspend ate the middle of the phase. ~32 h to the
+internal deadline. Next: ranking + bundles (P6/P7), the causal check (P8),
 hardening (P9), benchmark (P10).
 
 ## Open decisions

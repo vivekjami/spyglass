@@ -28,7 +28,7 @@ asymmetry here invalidates the result. Checked per condition file:
 | Underlying data | Baseline sees it via | Spyglass sees it via |
 |---|---|---|
 | `data/logs/<instance>.jsonl` | `tail_logs`, `grep_logs` (regex, window, limit ≤ 1000, truncation reported) | `search_logs`, `novel_templates`, `get_evidence` (bounded, ranked, deduped) |
-| `/metrics` on each service | `get_metric` (raw Prometheus text; call twice for a rate) | `detect_changepoints`, `error_delta` (computed) |
+| Request outcomes (status, latency per line in the logs; the same facts the `/metrics` counters aggregate) | `tail_logs`, `grep_logs` on the request lines; `get_metric` (raw Prometheus text; call twice for a rate) | `detect_changepoints`, `error_delta` (computed from the same request lines — the detector reads the logs, not the scraper, so its output re-checks; ADR-007) |
 | `data/deploy/journal.jsonl` | `deploy_events` (verbatim) | `deploy_events` (verbatim, plus correlation annotations elsewhere) |
 | Topology | `list_services` (from the compose layout) | `service_topology` |
 | Routing state | `current_versions` | `current_versions` |

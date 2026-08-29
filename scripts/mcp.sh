@@ -3,7 +3,7 @@
 #
 #   deployer  :8792  rollback (approval-required) + current_versions   -- the write plane
 #   rawtools  :8793  tail_logs, grep_logs, get_metric, list_services, deploy_events -- the baseline
-#   engine    :8791  search_logs, error_delta, deploy_events, freshness_watermark, get_evidence, service_topology -- the evidence plane
+#   engine    :8791  novel_templates, detect_changepoints, error_delta, deploy_events, search_logs, freshness_watermark, get_evidence, service_topology -- the evidence plane
 #
 # Liveness is by listening port, never by process-name grep: `pgrep -f` matches
 # the shell running this script, which is how `just mcp-up` silently did

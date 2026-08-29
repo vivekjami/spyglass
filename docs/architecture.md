@@ -27,11 +27,11 @@ this file never describes code that does not exist.
 | C1 | Telemetry ingestion (tailer, normalizer, scraper, backpressure) | Phase 3 | built: tailers + scraper; backpressure = poll cadence, no spill file yet |
 | C2 | Evidence store and index (NDJSON segments, template/text/metric indexes) | Phase 3 | built: in-memory store + template index + metric rings; segments written, not yet read |
 | C3 | Novelty detection (Drain-style mining, novelty scoring) | Phase 4 | built: level-aware Drain, first-seen/burst scoring with history guards, `novel_templates`; 12 unit tests |
-| C4 | Changepoint detection (guarded rolling z-score, deploy correlation) | Phase 5 | not started |
+| C4 | Changepoint detection (guarded rolling z-score, deploy correlation) | Phase 5 | built: log-derived request series (error_rate, errors_total, requests_total, latency_ms_mean per service/route/instance), z-score with σ floors and a 30 s guard, `at` refined to the first anomalous event, precision-aware deploy join, `detect_changepoints`; 9 unit tests |
 | C5 | Evidence ranking (hand-weighted linear model) | Phase 6 | not started |
 | C6 | Evidence bundle generation (bounds, coverage, relationships) | Phase 7 | not started |
-| C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | built: 6 read tools, eids + digests + latency on every response |
-| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | SOP v1 built: triage → hypotheses with eids → contradiction check → correlational labelling → three exits → verify → cited postmortem |
+| C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | built: 8 read tools, eids + digests + latency on every response |
+| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | SOP v3 (Phase 5): four-call triage (`freshness_watermark → novel_templates → detect_changepoints → deploy_events`) → hypotheses with eids → contradiction check (incl. `nearest_deploy.relation`) → correlational labelling with the deploy offset → three exits → verify → cited postmortem |
 | C9 | Causal verification (exemplar replay) | Phase 8 | sandbox reach **failed** (Phase 0, F9) → replay-as-MCP-tool planned |
 | C10 | Human approval gate | Phase 9 | live: `rollback` MCP tool gated via `require_approval_for_tools` (Phase 2); idempotency + TOCTOU in the deployer lib (Phase 1) |
 | C11 | Post-action verification loop | Phase 9 | crude version in SOP v1: sandbox sleep → watermark → `error_delta` before/after, 2 checks |

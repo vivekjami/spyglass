@@ -1,6 +1,6 @@
 # Spyglass engine configuration. Bounds are enforced by the engine, never by
 # the prompt (ADR-005). Weights and thresholds for novelty / changepoints /
-# ranking land here in Phases 4-6.
+# ranking live here (Phases 4-6), never in code.
 
 [paths]
 log_dir     = "data/logs"
@@ -16,7 +16,7 @@ excerpt_bytes      = 600    # raw log excerpt inside a template hit (data, not i
 
 [windows]
 default_lookback_secs        = 900   # when a tool is called without a window: [watermark-15m, watermark]
-deploy_correlation_secs      = 120   # a deploy within this of a change is annotated (Phase 5)
+deploy_correlation_secs      = 120   # a deploy within +-this of a changepoint is annotated on it (README C4)
 clock_skew_tolerance_secs    = 2
 
 [ingest]
@@ -94,3 +94,19 @@ min_baseline_secs    = 60     # burst scoring needs at least this much REAL base
 burst_log2_scale     = 6.0    # burst score = log2(rate_window / rate_baseline) / scale, so 64x -> 1.0
 severity_boost       = 1.25   # x1.25 when the template's dominant level in the window is ERROR (capped at 1.0)
 min_score            = 0.2    # default `min_score`
+
+# Phase 5 -- changepoints (README C4, ADR-007). Rolling z-score on 10 s
+# aggregates of the request series derived from the logs (error_rate,
+# errors_total, requests_total, latency_ms_mean per service / route / instance).
+# Thresholds were tuned on S1 only, and on ten minutes of its steady state.
+[changepoints]
+bucket_secs              = 10     # aggregate size; `at` is refined to the first anomalous event inside the bucket where that is well defined
+z_threshold              = 4.0    # |z| >= this ...
+consecutive_buckets      = 2      # ... for this many buckets in a row confirms a changepoint (the first bucket is the changepoint)
+baseline_secs            = 900    # rolling baseline for bucket t: [t - baseline_secs, t - guard_secs)
+guard_secs               = 30     # the spec said 120 s; 30 s keeps the baseline clean through confirmation and works on the 90 s fast timeline (ADR-007)
+min_baseline_buckets     = 6      # fewer real baseline buckets than this -> z is undetermined for that bucket, never inflated
+sigma_floor_count        = 1.0    # sigma floors: a flat baseline must not turn the first wobble into z = infinity
+sigma_floor_rate         = 0.01   #   1 percentage point for error_rate (counts also get a Poisson floor, sqrt(mean))
+sigma_floor_latency_frac = 0.05   #   5% of the baseline mean for latency_ms_mean ...
+sigma_floor_latency_ms   = 2.0    #   ... and never below 2 ms
