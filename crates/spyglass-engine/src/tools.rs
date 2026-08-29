@@ -376,6 +376,8 @@ pub fn freshness_watermark(engine: &Engine) -> Result<(ToolOutput, Value)> {
         "wall_clock_now": fmt_ts(now),
         "ingested_events": store.ingested,
         "malformed_lines": store.malformed,
+        "replay_lines_excluded": store.replay_lines_excluded,
+        "captured_requests": store.captures.len(),
         "templates_total": store.templates.len(),
         "deploy_entries": store.deploys.len(),
         "metric_series": store.metrics.len(),

@@ -10,13 +10,16 @@
 //! scraped Prometheus counters are ingested and watermarked for freshness
 //! (ADR-007 says why they are not the detector's input). Ranking (Phase 6)
 //! and bundles (Phase 7) sit on top of the tools: one scored, deduped,
-//! kind-diverse, byte-bounded list.
+//! kind-diverse, byte-bounded list. The causal check (Phase 8) is the one
+//! tool that touches the world: it replays a captured request against the
+//! always-on version instances and keeps its own traffic out of the store.
 
 pub mod bundle;
 pub mod changepoints;
 pub mod drain;
 pub mod ingest;
 pub mod rank;
+pub mod replay;
 pub mod tools;
 
 use std::{
@@ -60,8 +63,15 @@ pub struct Store {
     pub metrics: HashMap<String, VecDeque<(DateTime<Utc>, f64)>>,
     /// "log:<instance>" | "journal" | "metrics" -> newest timestamp seen
     pub watermarks: BTreeMap<String, DateTime<Utc>>,
+    /// req_id -> index of the gateway's `request_capture` event for it:
+    /// the request as the client sent it, for `get_exemplar_request`.
+    pub captures: HashMap<String, usize>,
     pub ingested: u64,
     pub malformed: u64,
+    /// Log lines produced by the engine's own replay experiments (req_id
+    /// `replay-*`), dropped at ingest so the evidence never contains the
+    /// investigation's own traffic.
+    pub replay_lines_excluded: u64,
     /// Earliest event timestamp in the store: the start of known history.
     /// Novelty is only claimable for templates that appeared after it.
     pub earliest_ts: Option<DateTime<Utc>>,
@@ -81,8 +91,10 @@ impl Store {
             deploys: Vec::new(),
             metrics: HashMap::new(),
             watermarks: BTreeMap::new(),
+            captures: HashMap::new(),
             ingested: 0,
             malformed: 0,
+            replay_lines_excluded: 0,
             earliest_ts: None,
             epoch: 0,
             drain_cfg,
@@ -127,6 +139,11 @@ impl Store {
             .and_modify(|w| *w = (*w).max(e.ts))
             .or_insert(e.ts);
         self.by_event_id.insert(e.event_id.clone(), idx);
+        if e.kind.as_deref() == Some("request_capture") {
+            if let Some(r) = &e.req_id {
+                self.captures.entry(r.clone()).or_insert(idx);
+            }
+        }
         self.ingested += 1;
         self.events.push(e);
     }
@@ -227,6 +244,8 @@ pub struct Engine {
     /// after a start or a reset; true once every file has been read to its
     /// end at least once. A query issued before that sees a partial world.
     pub caught_up: std::sync::atomic::AtomicBool,
+    /// For the replay experiment (and nothing else).
+    pub http: reqwest::Client,
 }
 
 impl Engine {
@@ -234,12 +253,17 @@ impl Engine {
         fs::create_dir_all(&cfg.paths.ledger_dir).ok();
         fs::create_dir_all(&cfg.paths.segment_dir).ok();
         let store = Store::new(cfg.drain.clone());
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(cfg.replay.timeout_ms))
+            .build()
+            .expect("http client");
         Arc::new(Self {
             cfg,
             store: RwLock::new(store),
             investigations: Mutex::new(HashMap::new()),
             started: Utc::now(),
             caught_up: std::sync::atomic::AtomicBool::new(false),
+            http,
         })
     }
 

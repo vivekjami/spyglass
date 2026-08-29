@@ -32,7 +32,47 @@ pub struct Config {
     pub changepoints: ChangepointCfg,
     pub ranking: RankingCfg,
     pub bundle: BundleCfg,
+    /// README C9 / ADR-010: the causal replay, as built in Phase 8.
+    #[serde(default)]
+    pub replay: ReplayCfg,
     pub services: Vec<ServiceCfg>,
+}
+
+/// The exemplar replay (README, Sandbox Causal Verification; ADR-010).
+/// Bounds are engine-enforced: `n` is clamped to `max_n`, every request
+/// times out, bodies are capped, and the traffic is tagged so the engine
+/// can keep its own experiment out of the evidence.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ReplayCfg {
+    /// Replays per version when the call does not say.
+    pub default_n: usize,
+    /// Hard cap on replays per version.
+    pub max_n: usize,
+    /// Per-request timeout.
+    pub timeout_ms: u64,
+    /// Cap on a sanitized request body, in bytes.
+    pub body_cap: usize,
+    /// Failure-proportion gap between the best and worst version at or above
+    /// which the experiment is reported as `separated`.
+    pub separation_min_delta: f64,
+    /// Where a captured edge request is replayed for a given service.
+    #[serde(default)]
+    pub routes: Vec<ReplayRoute>,
+}
+
+impl Default for ReplayCfg {
+    fn default() -> Self {
+        Self { default_n: 20, max_n: 50, timeout_ms: 3000, body_cap: 2048, separation_min_delta: 0.5, routes: vec![] }
+    }
+}
+
+/// "A request captured at `captured_path` is replayed against `service`'s
+/// version instances at `path`." The captured body is forwarded as-is.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct ReplayRoute {
+    pub captured_path: String,
+    pub service: String,
+    pub path: String,
 }
 
 /// README C5 / ADR-008: the hand-weighted linear ranking model. Weights are
@@ -136,6 +176,10 @@ pub struct ServiceCfg {
     pub default_port: Option<u16>,
     #[serde(default)]
     pub has_log: bool,
+    /// The version this instance runs, for services with always-on version
+    /// pairs (ADR-017): the replay's targets are the instances that carry one.
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 impl Config {
@@ -144,14 +188,20 @@ impl Config {
         Ok(toml::from_str(&text)?)
     }
 
-    pub fn metrics_url(&self, svc: &ServiceCfg) -> Option<String> {
+    /// The instance's host-published base URL: the same env vars Compose
+    /// uses, so the engine hits what `just up` published.
+    pub fn base_url(&self, svc: &ServiceCfg) -> Option<String> {
         let port = svc
             .port_env
             .as_deref()
             .and_then(|v| std::env::var(v).ok())
             .and_then(|v| v.parse::<u16>().ok())
             .or(svc.default_port)?;
-        Some(format!("http://127.0.0.1:{port}/metrics"))
+        Some(format!("http://127.0.0.1:{port}"))
+    }
+
+    pub fn metrics_url(&self, svc: &ServiceCfg) -> Option<String> {
+        self.base_url(svc).map(|b| format!("{b}/metrics"))
     }
 }
 
@@ -335,6 +385,137 @@ pub fn cap_item(item: &mut Value, max_bytes: usize) {
     }
 }
 
+// ------------------------------------------------------------------ sanitization
+
+/// Header names that never leave the capture, whatever the gateway kept
+/// (README, Safety Model: "exemplar sanitization strips auth headers and
+/// caps bodies regardless, because the pattern must survive contact with
+/// real data someday"). Matched on the lowercased name: exact, or any name
+/// containing one of the fragments.
+const DROP_HEADER_EXACT: &[&str] = &["authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key", "x-auth-token", "x-csrf-token"];
+const DROP_HEADER_FRAGMENTS: &[&str] = &["auth", "token", "secret", "session", "cookie", "credential", "password", "signature"];
+const HEADER_VALUE_CAP: usize = 256;
+
+/// JSON keys whose values are secret-shaped, compared after lowercasing and
+/// removing `-`/`_`; plus any key ending in one of the suffixes.
+const REDACT_KEYS: &[&str] = &[
+    "password", "passwd", "pwd", "secret", "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "authorization", "auth",
+    "cvv", "cvc", "cvv2", "cardnumber", "pan", "ssn", "privatekey", "accesskey", "secretkey", "clientsecret", "otp", "pin",
+];
+const REDACT_SUFFIXES: &[&str] = &["token", "secret", "password", "apikey"];
+
+static PAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:\d[ -]?){12,18}\d\b").unwrap());
+
+pub fn header_is_dropped(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    DROP_HEADER_EXACT.contains(&n.as_str()) || DROP_HEADER_FRAGMENTS.iter().any(|f| n.contains(f))
+}
+
+fn key_is_secret(key: &str) -> bool {
+    let k: String = key.to_ascii_lowercase().chars().filter(|c| *c != '-' && *c != '_' && *c != ' ').collect();
+    REDACT_KEYS.contains(&k.as_str()) || REDACT_SUFFIXES.iter().any(|s| k.len() > s.len() && k.ends_with(s))
+}
+
+/// Keep only headers that are not auth-shaped; cap every value. Returns the
+/// kept map (names lowercased, sorted) and the names that were dropped.
+pub fn sanitize_headers(headers: &Value) -> (BTreeMap<String, String>, Vec<String>) {
+    let mut kept = BTreeMap::new();
+    let mut dropped = Vec::new();
+    if let Value::Object(m) = headers {
+        for (k, v) in m {
+            let name = k.to_ascii_lowercase();
+            if header_is_dropped(&name) {
+                dropped.push(name);
+                continue;
+            }
+            let mut val = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            if val.len() > HEADER_VALUE_CAP {
+                let mut cut = HEADER_VALUE_CAP;
+                while !val.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                val.truncate(cut);
+                val.push_str("…[capped]");
+            }
+            kept.insert(name, val);
+        }
+    }
+    dropped.sort();
+    (kept, dropped)
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct SanitizedBody {
+    pub text: String,
+    pub bytes: usize,
+    pub truncated: bool,
+    /// What was redacted, by JSON path (or "text" for a non-JSON body).
+    pub redactions: Vec<String>,
+}
+
+fn redact_value(v: &mut Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, val) in m.iter_mut() {
+                let p = if path.is_empty() { k.clone() } else { format!("{path}.{k}") };
+                if key_is_secret(k) {
+                    *val = Value::String("[redacted]".into());
+                    out.push(p);
+                } else {
+                    redact_value(val, &p, out);
+                }
+            }
+        }
+        Value::Array(a) => {
+            for (i, val) in a.iter_mut().enumerate() {
+                redact_value(val, &format!("{path}[{i}]"), out);
+            }
+        }
+        Value::String(s) => {
+            if PAN_RE.is_match(s) {
+                *s = PAN_RE.replace_all(s, "[redacted:pan]").into_owned();
+                out.push(format!("{path}:pan"));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Redact secret-shaped JSON keys and card-like digit runs, then cap. A body
+/// with nothing to redact is returned byte-identical (up to the cap), so a
+/// replay sends what was captured.
+pub fn sanitize_body(body: &str, cap: usize) -> SanitizedBody {
+    let mut redactions = Vec::new();
+    let mut text = match serde_json::from_str::<Value>(body) {
+        Ok(mut v) => {
+            redact_value(&mut v, "", &mut redactions);
+            if redactions.is_empty() { body.to_string() } else { v.to_string() }
+        }
+        Err(_) => {
+            if PAN_RE.is_match(body) {
+                redactions.push("text:pan".into());
+                PAN_RE.replace_all(body, "[redacted:pan]").into_owned()
+            } else {
+                body.to_string()
+            }
+        }
+    };
+    let bytes = text.len();
+    let truncated = bytes > cap;
+    if truncated {
+        let mut cut = cap;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        text.push_str("…[capped]");
+    }
+    SanitizedBody { text, bytes, truncated, redactions }
+}
+
 // ------------------------------------------------------------------ ledger
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -378,4 +559,63 @@ pub struct BoundsApplied {
 
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn auth_shaped_headers_are_dropped_and_the_rest_kept_lowercased() {
+        let h = json!({"Content-Type": "application/json", "Authorization": "Bearer x", "Cookie": "a=b",
+                       "X-Client-Class": "premium", "X-Auth-Token": "t", "X-Idempotency-Key": "k", "User-Agent": "ua"});
+        let (kept, dropped) = sanitize_headers(&h);
+        assert_eq!(kept.keys().cloned().collect::<Vec<_>>(), vec!["content-type", "user-agent", "x-client-class", "x-idempotency-key"]);
+        assert_eq!(dropped, vec!["authorization", "cookie", "x-auth-token"]);
+    }
+
+    #[test]
+    fn header_values_are_capped_on_a_char_boundary() {
+        let long = "é".repeat(300);
+        let (kept, _) = sanitize_headers(&json!({"user-agent": long}));
+        let v = &kept["user-agent"];
+        assert!(v.ends_with("…[capped]"));
+        assert!(v.len() <= HEADER_VALUE_CAP + "…[capped]".len());
+    }
+
+    #[test]
+    fn a_clean_body_is_returned_byte_identical() {
+        let body = r#"{"currency":"EUR","customer":"cust-7","card_class":"premium","amount":42.1}"#;
+        let s = sanitize_body(body, 2048);
+        assert_eq!(s.text, body);
+        assert!(s.redactions.is_empty());
+        assert!(!s.truncated);
+    }
+
+    #[test]
+    fn secret_keys_and_card_numbers_are_redacted_by_path() {
+        let body = r#"{"customer":"c","card":{"number":"4111 1111 1111 1111","cvv":"123"},"password":"hunter2","session_token":"abc"}"#;
+        let s = sanitize_body(body, 2048);
+        assert!(!s.text.contains("4111"));
+        assert!(!s.text.contains("hunter2"));
+        assert!(!s.text.contains("\"abc\""));
+        let mut r = s.redactions.clone();
+        r.sort();
+        assert_eq!(r, vec!["card.cvv", "card.number:pan", "password", "session_token"]);
+    }
+
+    #[test]
+    fn non_json_bodies_still_lose_card_like_runs_and_get_capped() {
+        let s = sanitize_body("pan=4111111111111111&x=1", 8);
+        assert!(s.text.starts_with("pan=[red"));
+        assert!(s.truncated);
+        assert_eq!(s.redactions, vec!["text:pan"]);
+    }
+
+    #[test]
+    fn amounts_and_ids_are_not_mistaken_for_card_numbers() {
+        let body = r#"{"amount":178.91,"order":"ord_1234567890ab","req":"d49edd91-2f1f-4132-826b-2236e4a07521"}"#;
+        assert!(sanitize_body(body, 2048).redactions.is_empty());
+    }
 }

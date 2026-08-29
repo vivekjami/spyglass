@@ -12,7 +12,12 @@
 | `watch.py` | error-rate dashboard + threshold alert; opens a TrueForge session on alert (`--no-session` to disable) | stack up; `.env` for `GATEWAY_PORT`, `SPYGLASS_AGENT` |
 | `mcp.sh` | `start / stop / status` the three MCP servers (engine :8791, deployer :8792, rawtools :8793) by listening port | built binaries |
 | `tf-setup.py` | register MCP servers + every `bench/conditions/*.json` as a named agent; idempotent (`PUT` for updates takes manifest only) | harness up |
+| `mcp_client.py` | stdlib MCP streamable-HTTP client (`session`, `call`, `wait_ready`) — the check scripts talk to the engine through the tool surface, never a side door | engine up |
+| `investigate.py` | one instrumented investigation: session on a named agent, alert, approval policy, metrics + full event trace → `bench/results/`; runs the ledger re-check | harness + MCP servers up |
 | `ledger-check.py` | re-execute every deterministic ledger entry against the live engine and compare digests (ADR-004) | engine up |
+| `changepoint-check.py` | Phase 5 acceptance on the latest S1 run (`just s5-check`) | engine up |
+| `bundle-check.py` | Phase 6/7 acceptance on the latest S1 run (`just s7-check`) | engine up |
+| `replay-check.py` | Phase 8 acceptance on the latest S1 run (`just s8-check`): exemplar sanitized, replay proportions measured, ledger entries, negative control, no leakage | engine + stack up |
 | `s1-curve.py` | error-rate curve for a run; `--compare` two runs against ground-truth tolerances | run snapshots in `data/scenarios/s1/` |
 | `validate-ground-truth.py` | check `ground-truth.yaml` files against `scenarios/SCHEMA.md` | PyYAML |
 

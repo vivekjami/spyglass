@@ -23,7 +23,7 @@ def replay_args(entry: dict) -> dict:
     """Turn the ledger's resolved args back into the tool's argument shape."""
     a = dict(entry["args"])
     tool = entry["tool"]
-    if tool in ("search_logs", "deploy_events", "novel_templates", "detect_changepoints", "build_evidence_bundle") and a.get("window"):
+    if tool in ("search_logs", "deploy_events", "novel_templates", "detect_changepoints", "build_evidence_bundle", "get_exemplar_request") and a.get("window"):
         a["window"] = {"from": a["window"]["from"], "to": a["window"]["to"]}
     if tool in ("novel_templates", "detect_changepoints") and a.get("baseline"):
         a["baseline"] = {"from": a["baseline"]["from"], "to": a["baseline"]["to"]}

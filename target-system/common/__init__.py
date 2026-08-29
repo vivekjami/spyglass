@@ -45,7 +45,7 @@ def now_iso() -> str:
 
 # ---------------------------------------------------------------- logging
 _EXTRA_KEYS = ("route", "status", "latency_ms", "deploy_id", "kind", "upstream",
-               "upstream_version", "method", "path", "headers", "body")
+               "upstream_version", "method", "path", "headers", "body", "replay")
 
 
 class JsonFormatter(logging.Formatter):
@@ -160,6 +160,10 @@ def install(app: FastAPI) -> None:
         if path in UNLOGGED_PATHS:
             return await call_next(request)
         rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+        # Synthetic replay traffic (the evidence engine's causal check) says
+        # so on its request line, so a reader of the raw log can tell an
+        # experiment from a customer. The engine also keys off the req_id.
+        replay = request.headers.get("x-spyglass-replay")
         token = req_id_var.set(rid)
         own = current_deploy(SERVICE)["deploy_id"]
         t0 = time.perf_counter()
@@ -170,7 +174,7 @@ def install(app: FastAPI) -> None:
             # system: ERROR level, the exception's own message, a stack.
             ms = round((time.perf_counter() - t0) * 1000, 1)
             log.error(str(exc) or exc.__class__.__name__, exc_info=True,
-                      extra={"route": path, "status": 500, "latency_ms": ms, "deploy_id": own})
+                      extra={"route": path, "status": 500, "latency_ms": ms, "deploy_id": own, "replay": replay})
             REQUESTS.labels(SERVICE, path, "500").inc()
             ERRORS.labels(SERVICE, path).inc()
             LATENCY.labels(SERVICE, path).observe(ms)
@@ -183,9 +187,9 @@ def install(app: FastAPI) -> None:
         LATENCY.labels(SERVICE, path).observe(ms)
         if status >= 500:
             ERRORS.labels(SERVICE, path).inc()
-            log.error("request failed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own})
+            log.error("request failed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own, "replay": replay})
         else:
-            log.info("request completed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own})
+            log.info("request completed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own, "replay": replay})
         response.headers["x-request-id"] = rid
         req_id_var.reset(token)
         return response
