@@ -52,7 +52,7 @@ Every scenario reproduces to the request (F1 of Phase 1, re-measured):
 | Scenario | Two runs, fast timeline | Post-fault 5xx | Post-fault p95 | Drift |
 |---|---|---|---|---|
 | S2 | `20260829T130851Z`, `20260829T131500Z` | 29.3 % / 29.3 % | 8,013 / 8,013 ms | **0.0 pt** |
-| S3 | final pass `[see README]` (two earlier passes, 0.0 pt each, taught F2) | 98.0 % / 98.0 % | — | **0.0 pt** |
+| S3 | `20260829T135308Z`, `20260829T140004Z` (300 s steady; two earlier passes, 0.0 pt each, taught F2) | 98.7 % / 98.7 % | — | **0.0 pt** |
 | S6 | `20260829T134326Z`, `20260829T134815Z` (130 s lead; an earlier 50 s-lead pass taught F1b) | 0.0 % / 0.0 % (a latency-only symptom) | 5,071 / 5,068 ms | **0.0 pt** |
 
 ### F1b. A fast timeline can be a different scenario
