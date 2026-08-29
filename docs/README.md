@@ -13,7 +13,7 @@ the running record of decisions and findings.
 | [`progress.md`](progress.md) | Where the build is against the spec's calendar; open decisions; drop order. |
 | [`phase0-findings.md`](phase0-findings.md) | What we actually verified about the TrueForge harness, and where reality diverged from the spec. |
 | [`phase1-findings.md`](phase1-findings.md) | The incident environment: what was built, what was measured, what pushed back. |
-| `phase2` … [`phase5-findings.md`](phase5-findings.md) | One record per phase: baseline (P2), the loop (P3), novelty (P4), changepoints (P5). |
+| `phase2` … [`phase7-findings.md`](phase7-findings.md) | One record per phase: baseline (P2), the loop (P3), novelty (P4), changepoints (P5), ranking (P6), bundles (P7). |
 | [`adr/`](adr/) | Individual decision records — context, alternatives, why rejected, reversal conditions. |
 | [`safety.md`](safety.md) | The safety model: read/write separation, injection defence, approval gate. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |

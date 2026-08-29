@@ -8,11 +8,15 @@
 //! Changepoints (Phase 5) are detected on request series derived from the
 //! events -- event-time stamped and rebuilt on start, so deterministic; the
 //! scraped Prometheus counters are ingested and watermarked for freshness
-//! (ADR-007 says why they are not the detector's input).
+//! (ADR-007 says why they are not the detector's input). Ranking (Phase 6)
+//! and bundles (Phase 7) sit on top of the tools: one scored, deduped,
+//! kind-diverse, byte-bounded list.
 
+pub mod bundle;
 pub mod changepoints;
 pub mod drain;
 pub mod ingest;
+pub mod rank;
 pub mod tools;
 
 use std::{
@@ -139,6 +143,21 @@ impl Store {
         self.watermarks.iter().filter(|(k, _)| k.starts_with("log:")).map(|(_, v)| *v).max()
     }
 
+    /// The newest timestamp every ACTIVE log source has been read past: a
+    /// line with ts <= this has been ingested from every file that is still
+    /// writing (per-file timestamps are monotonic). Windows resolve their
+    /// end here rather than at `newest_log_ts`, so a query never includes a
+    /// bucket that another file has not delivered yet -- that is what makes
+    /// "deterministic on frozen data" true at the live edge (ADR-004). A
+    /// source more than `ACTIVE_SECS` behind the newest is idle (a version
+    /// with no traffic) and does not hold the watermark back.
+    pub fn safe_log_ts(&self) -> Option<DateTime<Utc>> {
+        const ACTIVE_SECS: i64 = 5;
+        let newest = self.newest_log_ts()?;
+        let cutoff = newest - chrono::Duration::seconds(ACTIVE_SECS);
+        self.watermarks.iter().filter(|(k, _)| k.starts_with("log:")).map(|(_, v)| *v).filter(|v| *v >= cutoff).min()
+    }
+
     pub fn events_in<'a>(&'a self, w: &'a Window, services: &'a [String]) -> impl Iterator<Item = &'a Event> + 'a {
         self.events
             .iter()
@@ -204,6 +223,10 @@ pub struct Engine {
     pub store: RwLock<Store>,
     pub investigations: Mutex<HashMap<String, Investigation>>,
     pub started: DateTime<Utc>,
+    /// False while the tailer is still rebuilding the store from the files
+    /// after a start or a reset; true once every file has been read to its
+    /// end at least once. A query issued before that sees a partial world.
+    pub caught_up: std::sync::atomic::AtomicBool,
 }
 
 impl Engine {
@@ -216,6 +239,7 @@ impl Engine {
             store: RwLock::new(store),
             investigations: Mutex::new(HashMap::new()),
             started: Utc::now(),
+            caught_up: std::sync::atomic::AtomicBool::new(false),
         })
     }
 

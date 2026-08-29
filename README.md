@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–5 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–7 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -419,6 +419,8 @@ score(e) = w_n·novelty(e)            # is it new / bursting?
 
 Rationale: rank the *change-shaped* evidence first because incidents are changes; keep the model linear so any ranking can be explained factor-by-factor in the ledger; make the weights config so the ablation (`novelty off`) is a one-line change. "Causal relevance" appears in scores **only after** a sandbox result exists, as a post-hoc boost — never as a prior.
 
+**Phase 6 as built** ([ADR-008](docs/adr/ADR-008-evidence-ranking-linear-model.md)): the factors are defined the same way for every kind, so kinds compete on one scale — *novelty*: did this behaviour first appear in the window (a first-seen template 1.0, an error series from zero 1.0, a deploy 1.0, a burst by the shared `log2(ratio)/6`); *proximity*: `exp(−|t − T0| / 120 s)` from the engine's onset estimate `incident_t0` (earliest error changepoint, else earliest novel ERROR template); *severity*: ERROR 1 / WARN .5 / INFO 0, error-series steps 1, latency .6, traffic or down steps .3, deploys .5; *deploy_correlation*: within ±120 s of a change event of another kind; *freq_shift*: the magnitude mapping; *relevance*: `0.75^hops` from the focus service over the config topology. **Dedupe precedes scoring**: templates whose exemplars share request ids are one cascade (origin first), as are error changepoints on connected services within 2 s. **The bundle's head is kind-diverse** — best template, best changepoint, best deploy, then the rest by score — and every item carries `score_rank`, its position by score alone. Measured on S1: by score alone the INFO decoy (0.856) outranks the fault deploy (0.805); the head puts the three key facts first. The v0 weights are kept as-is: with every S1 candidate first-seen, `w_n = 0` moves every score by exactly 0.30 and no position; the weights are recorded in every bundle's ledger entry.
+
 ### C6. Evidence bundle generation
 
 The highest-leverage component: convert unbounded telemetry into one bounded, structured package. `build_evidence_bundle(window, focus_service?)` returns:
@@ -444,7 +446,9 @@ The highest-leverage component: convert unbounded telemetry into one bounded, st
 }
 ```
 
-Hard bounds, enforced by the engine, never by prompt: ≤ `max_items` (default 20), ≤ `max_bytes_per_item` (default 2 KB), one exemplar excerpt per template (deduped), raw excerpts wrapped as data (see Safety). `coverage` tells the model — and the judge — exactly how much was distilled into how little. **Objective: maximum investigative signal per token.** The measured reduction ratio and its effect on tokens: `[MEASURE AFTER IMPLEMENTATION]`.
+Hard bounds, enforced by the engine, never by prompt: ≤ `max_items` (default 20), ≤ `max_bytes_per_item` (default 2 KB), ≤ `bundle.max_bytes` (8 KB) for the whole payload, raw excerpts wrapped as data (see Safety). `coverage` tells the model — and the judge — exactly how much was distilled into how little. **Objective: maximum investigative signal per token.**
+
+**Phase 7 as built:** items are compact — pointers and numbers, no excerpt; `get_evidence(eid)` returns the full record with the raw excerpt and exemplars, so the stack trace costs one dereference for the one item that needs it. Every item carries a stable `ref` (`template_id`, series key, `deploy_id`) and **relationships link refs, not eids** — eids are per investigation and stripped from digests (ADR-004), so a relationship by eid would break the ledger re-check. The bundle also reports `incident_t0` (the onset estimate), `ranking` (weights used, order rule), `coverage.bytes_scanned` / `bytes_reduction_ratio` / `facts_after_dedupe` / `truncated`. Measured on S1 (fast timeline, 190 s window): **8,747 events / 2.74 MB → 6 items / 5.6 kB** (1458 : 1 events per item, 630 : 1 bytes), the three key facts with their relationships, engine 61 ms.
 
 ### C7. MCP server — see [MCP Interface](#mcp-interface)
 
@@ -501,9 +505,9 @@ Core types (crate `spyglass-core`):
 | `deploy_events` | window, service? | deploy/config events | includes the journal verbatim |
 | `service_topology` | — | static edges from Compose config (v0) | derived-from-traces is Future / optional |
 | `get_exemplar_request` | template_id \| route+status | one sanitized captured request (method, path, headers subset, body) | feeds the sandbox replay |
-| `build_evidence_bundle` | window, focus_service? | the bundle (C6) | the one-call investigation starter |
+| `build_evidence_bundle` | window, focus_service?, limit?, weights? | the bundle (C6): ranked, deduped, kind-diverse head, ≤ 8 KB, `coverage`, `relationships` by ref, `incident_t0` | the one-call investigation starter; SOP v4 opens with it |
 | `get_evidence` | eid | full underlying record | dereference for audits |
-| `freshness_watermark` | — | newest ts per source + lag_ms | **SOP requires checking before concluding** |
+| `freshness_watermark` | — | newest ts per source + lag_ms; `safe_log_ts` (every active source read past it — where windows end), `caught_up` (files fully read after a start) | **SOP requires checking before concluding** |
 
 ### Mutating tool (separate deployer MCP server)
 
@@ -640,7 +644,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 **ADR-007 — Changepoint detection via rolling z-score first.** *(Expanded in full at Phase 5: [`docs/adr/ADR-007`](docs/adr/ADR-007-changepoints-via-rolling-zscore.md).)*
 *Context:* the agent needs "when did behavior change," cheaply, streaming. *Decision:* z-score on 10s aggregates with guarded baselines and σ floors, on request series derived from the logs (deterministic, re-checkable) rather than the scraped counters; guard 30 s; `at` refined to the first anomalous event; precision-aware deploy join; CUSUM optional for drifts. *Alternatives:* PELT/BinSeg — rejected v0: offline, harder to explain, marginal gain at demo scale; learned detectors — rejected: off-thesis; a robust σ (MAD) — not adopted, one known miss recorded. *Consequences:* slow leaks (S4) may need CUSUM; threshold tuning is config, tuned on S1 only and said so. *Reversal:* detector is a function over a bucketed series; adding one is additive.
 
-**ADR-008 — Evidence ranking as a hand-weighted linear model.**
+**ADR-008 — Evidence ranking as a hand-weighted linear model.** *(Expanded in full at Phase 6: [`docs/adr/ADR-008`](docs/adr/ADR-008-evidence-ranking-linear-model.md).)*
 *Context:* many candidate items, small budget. *Decision:* transparent linear score over novelty/proximity/severity/deploy-correlation/frequency/relevance; weights in config. *Alternatives:* learning-to-rank — rejected: no training data, no explainability; LLM-as-ranker — rejected: puts the model back on the hot path the engine exists to shorten. *Consequences:* weights are opinions — stated, tuned on S1–S3, and inspectable in every ledger entry. *Reversal:* the scorer is a pure function; swap freely with evidence.
 
 **ADR-009 — An evidence ledger, not just an RCA.**
@@ -673,7 +677,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 spyglass/                         ✓ built   ○ planned (phase)
 ├── README.md                     ✓ this document — the source of truth
 ├── LICENSE                       ✓ MIT
-├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | validate | demo | ledger-check   ○ bench (P10)
+├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | s7-check | validate | demo | ledger-check   ○ bench (P10)
 ├── docker-compose.yml            ✓ target system                                     ○ engine service (P3)
 ├── .env.example                  ✓ model key, host ports
 ├── spyglass.toml                 ✓ engine config: paths, bounds, windows, ingest, services
@@ -681,14 +685,14 @@ spyglass/                         ✓ built   ○ planned (phase)
 ├── crates/
 │   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events
 │   ├── spyglass-core/            ✓ Event/DeployEvent/Window types, config, masking → template ids, canonical digests, ledger entries
-│   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + changepoints + tools + investigations/ledger (rank P6/P7 land here)
-│   ├── spyglass-mcp/             ✓ rmcp server: 8 read tools (novel_templates what, detect_changepoints when), bounds, eids, digests, latency
+│   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + changepoints + ranking + bundles + tools + investigations/ledger
+│   ├── spyglass-mcp/             ✓ rmcp server: 9 read tools (build_evidence_bundle first; novel_templates what, detect_changepoints when), bounds, eids, digests, latency
 │   └── spyglass-cli/             ○ inspect | ingest --replay (later)
 ├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
 ├── target-system/
 │   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
 │   └── Dockerfile, requirements.txt                   ✓
-├── agent/                        ✓ sop.md (Spyglass SOP v3), baseline-sop.md            ○ analyst briefs (P8)
+├── agent/                        ✓ sop.md (Spyglass SOP v4, bundle-first), baseline-sop.md   ○ analyst briefs (P8)
 ├── scenarios/
 │   ├── SCHEMA.md                 ✓ ground-truth format
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
@@ -702,9 +706,9 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── README.md motivation.md architecture.md progress.md     ✓
 │   ├── phase0-findings.md phase1-findings.md                    ✓ per-phase records
 │   ├── safety.md benchmark.md demo.md                           ✓ scaffolds, filled by their phases
-│   ├── adr/                      ✓ 001–007 009 015 016 017 in full; the rest indexed, expanded when confronted
+│   ├── adr/                      ✓ 001–009 015 016 017 in full; the rest indexed, expanded when confronted
 │   └── blog/draft.md             ✓ grown incrementally
-├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, ledger-check.py, changepoint-check.py, mcp_client.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
+├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, ledger-check.py, changepoint-check.py, bundle-check.py, mcp_client.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
 ├── data/                         · runtime only, gitignored: logs, deploy state, scenario run snapshots
 └── .github/workflows/ci.yml      ○ fmt, clippy, tests, s1 smoke (P11)
 ```
@@ -1062,7 +1066,7 @@ How a company like TrueFoundry **could** derive value from this capability class
 
 ### Optional — upside, in drop-order-reverse priority
 
-- [x] Changepoint detection (P5) · [ ] Ranking + bundles (P6/P7) · [ ] Sandbox causal replay (P8) · [ ] Subagents in parallel · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
+- [x] Changepoint detection (P5) · [x] Ranking + bundles (P6/P7) · [ ] Sandbox causal replay (P8) · [ ] Subagents in parallel · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
 
 (Yes: changepoints through replay are listed optional relative to the *mandatory floor* — the floor is what guarantees a qualifying submission; the SHOULD list is what makes it a winning one. Both lists are attacked in phase order.)
 

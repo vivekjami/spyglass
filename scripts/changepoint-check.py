@@ -31,7 +31,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from mcp_client import call, session  # noqa: E402
+from mcp_client import call, session, wait_ready  # noqa: E402
 
 RUNS = Path("data/scenarios/s1")
 GT = Path("scenarios/s1-payment-regression/ground-truth.yaml")
@@ -82,6 +82,7 @@ def main() -> None:
     labels = {"service": "orders", "route": "/orders"}   # ground truth: errors_total{service="orders",route="/orders"}
 
     sid = session(name="changepoint-check")
+    wait_ready(sid)
     raw: dict = {"run": str(run), "checks": {}}
     fails: list[str] = []
     print(f"run {run.name}: fault {fault_id} at {m['t_fault']}, benign {benign_id} at {m['t_benign_deploy']}")

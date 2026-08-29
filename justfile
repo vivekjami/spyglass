@@ -64,6 +64,10 @@ s1-check *args:
 s5-check *args:
     python3 scripts/changepoint-check.py {{args}}
 
+# Phase 6+7 acceptance on the latest S1 run: top 3 = deploy + changepoint + template, w_n=0 reorders, <= 20 items / 8 kB, reduction_ratio.
+s7-check *args:
+    python3 scripts/bundle-check.py {{args}}
+
 # Validate every ground-truth.yaml against scenarios/SCHEMA.md.
 validate:
     python3 scripts/validate-ground-truth.py scenarios/*/ground-truth.yaml
