@@ -29,7 +29,7 @@ down:
 # Stop everything and wipe runtime data (logs, deploy state, postgres). Scenario runs are kept.
 clean:
     docker compose down -v --remove-orphans 2>/dev/null || true
-    rm -rf data/logs data/deploy
+    rm -rf data/logs data/deploy data/segments
 
 # Run a scenario from clean state: `just scenario s1`. S1_FAST=1 shortens the timeline.
 scenario name:
@@ -67,9 +67,17 @@ validate:
 logs svc:
     docker compose logs -f --no-log-prefix {{svc}}
 
-# Not built yet -- lands with Phase 3+ (see README, Build Order).
+# THE loop: fresh S1 incident -> Spyglass agent investigates -> gated rollback -> verified recovery -> ledger re-check.
+# Approval is asked for interactively unless DEMO_APPROVAL=allow (unattended).
 demo:
-    @echo "just demo is not built yet: it needs the engine + agent loop (Phase 3+)."; exit 1
+    just mcp-up
+    just tf-setup
+    S1_FAST=1 just scenario s1
+    python3 scripts/investigate.py --condition spyglass --scenario s1 --approval ${DEMO_APPROVAL:-ask} --tag demo
+
+# Re-execute every deterministic ledger entry against the live engine and compare digests: `just ledger-check ledger/<id>.jsonl`
+ledger-check file:
+    python3 scripts/ledger-check.py {{file}}
 
 bench:
     @echo "just bench is not built yet: it needs the benchmark runner (Phase 10)."; exit 1
