@@ -31,6 +31,7 @@ asymmetry here invalidates the result. Checked per condition file:
 | Request outcomes (status, latency per line in the logs; the same facts the `/metrics` counters aggregate) | `tail_logs`, `grep_logs` on the request lines; `get_metric` (raw Prometheus text; call twice for a rate) | `detect_changepoints`, `error_delta` (computed from the same request lines — the detector reads the logs, not the scraper, so its output re-checks; ADR-007) |
 | `data/deploy/journal.jsonl` | `deploy_events` (verbatim) | `deploy_events` (verbatim, plus correlation annotations elsewhere) |
 | Topology | `list_services` (from the compose layout) | `service_topology` |
+| All of the above, once | — (the baseline composes its own picture from the raw tools) | `build_evidence_bundle` (the three sources above, deduped, ranked, bounded to 8 kB; the same facts, no new access) |
 | Routing state | `current_versions` | `current_versions` |
 | Captured requests | in the gateway log (`kind=request_capture`), via grep | `get_exemplar_request` |
 
