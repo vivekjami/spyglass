@@ -190,6 +190,25 @@ def main() -> None:
         "turns": turns,
         "events": all_events,
     }
+    # Ledger (Spyglass conditions): the engine writes ledger/<mcp-session-id>.jsonl.
+    engine_sid = next((s.get("session_id") for e in all_events if e.get("type") == "mcp.initialize"
+                       for s in e.get("mcp_servers", []) if s.get("name") == "spyglass-engine"), None)
+    if engine_sid:
+        lp = ROOT / "ledger" / f"{engine_sid}.jsonl"
+        entries = [json.loads(l) for l in lp.read_text().splitlines() if l.strip()] if lp.exists() else []
+        issued = sorted({eid for en in entries for eid in en.get("eids", [])}, key=lambda x: int(x[1:]))
+        cited = sorted({m for m in re.findall(r"\bE\d+\b", final_text)}, key=lambda x: int(x[1:]))
+        recheck = None
+        if entries:
+            import subprocess
+            p = subprocess.run([sys.executable, str(ROOT / "scripts/ledger-check.py"), str(lp)], capture_output=True, text=True)
+            recheck = {"exit": p.returncode, "verdict": p.stdout.strip().splitlines()[-1] if p.stdout else p.stderr[-300:]}
+        result["ledger"] = {"investigation": engine_sid, "path": str(lp.relative_to(ROOT)), "entries": len(entries),
+                            "eids_issued": len(issued), "eids_cited_in_rca": cited,
+                            "eids_cited_valid": [c for c in cited if c in issued],
+                            "engine_latency_ms": [en["latency_ms"] for en in entries],
+                            "recheck": recheck, "ledger_entries": entries}
+        result["metrics"]["evidence_citations"] = len([c for c in cited if c in issued])
     try:
         result["model"] = tf._req("GET", "/agents")["data"]
         result["model"] = next(x["manifest"]["model"]["name"] for x in result["model"] if x["name"] == agent_name)
@@ -204,7 +223,18 @@ def main() -> None:
           f"| tool bytes to context {m['tool_response_bytes']:,}")
     print(f"   rollbacks executed: {m['rollbacks_executed'] or 'none'} | payments {m['versions_before']['payments']} -> {m['versions_after']['payments']}")
     print(f"   5xx before {pre_rate['rate']:.1%} -> after {post_rate['rate']:.1%}" if post_rate["rate"] is not None else "   (no post traffic)")
+    if result.get("ledger"):
+        L = result["ledger"]
+        lat = L["engine_latency_ms"]
+        print(f"   ledger: {L['path']} | {L['entries']} entries, {L['eids_issued']} eids issued, {len(L['eids_cited_valid'])} cited in RCA "
+              f"| engine latency p50 {sorted(lat)[len(lat)//2] if lat else 0:.2f} ms max {max(lat) if lat else 0:.2f} ms | re-check: {(L['recheck'] or {}).get('verdict','-')}")
     print(f"   result: {out_path.relative_to(ROOT)}")
+    # The acceptance bar is "digests re-check": a mismatch is a loud failure,
+    # after the result is written so the evidence of it is kept.
+    rc = (result.get("ledger") or {}).get("recheck") or {}
+    if rc.get("exit", 0) != 0:
+        print("   LEDGER RE-CHECK FAILED", file=sys.stderr)
+        sys.exit(3)
 
 
 if __name__ == "__main__":

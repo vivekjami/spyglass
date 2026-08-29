@@ -18,6 +18,8 @@ import tf  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MCP_SERVERS = {
+    "spyglass-engine": ("http://localhost:8791/mcp",
+                        "Spyglass evidence engine (read-only): bounded, template-grouped, evidence-id-stamped tools -- search_logs, error_delta, deploy_events, freshness_watermark, get_evidence, service_topology."),
     "spyglass-rawtools": ("http://localhost:8793/mcp",
                           "BASELINE tools: raw, unshaped telemetry access (tail_logs, grep_logs, get_metric, list_services, deploy_events)."),
     "spyglass-deployer": ("http://localhost:8792/mcp",
@@ -64,7 +66,7 @@ def register_agents() -> None:
         }
         name = c["name"]
         if name in existing:
-            tf._req("PUT", f"/agents/{existing[name]}", {"name": name, "manifest": manifest})
+            tf._req("PUT", f"/agents/{existing[name]}", {"manifest": manifest})  # update body is manifest-only
             verb = "updated"
         else:
             tf._req("POST", "/agents", {"name": name, "manifest": manifest})

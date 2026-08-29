@@ -10,6 +10,9 @@
 | `configure-model.sh` | register (or rotate) the model provider from `.env`; idempotent (`PUT`) | `.env` with `MODEL_PROVIDER`, `MODEL_API_KEY` |
 | `tf.py` | stdlib REST driver: sessions, turns, polling, approvals, cross-thread token totals — the seed of the bench runner | harness up |
 | `watch.py` | error-rate dashboard + threshold alert; opens a TrueForge session on alert (`--no-session` to disable) | stack up; `.env` for `GATEWAY_PORT`, `SPYGLASS_AGENT` |
+| `mcp.sh` | `start / stop / status` the three MCP servers (engine :8791, deployer :8792, rawtools :8793) by listening port | built binaries |
+| `tf-setup.py` | register MCP servers + every `bench/conditions/*.json` as a named agent; idempotent (`PUT` for updates takes manifest only) | harness up |
+| `ledger-check.py` | re-execute every deterministic ledger entry against the live engine and compare digests (ADR-004) | engine up |
 | `s1-curve.py` | error-rate curve for a run; `--compare` two runs against ground-truth tolerances | run snapshots in `data/scenarios/s1/` |
 | `validate-ground-truth.py` | check `ground-truth.yaml` files against `scenarios/SCHEMA.md` | PyYAML |
 

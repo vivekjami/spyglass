@@ -1,0 +1,81 @@
+# Spyglass engine configuration. Bounds are enforced by the engine, never by
+# the prompt (ADR-005). Weights and thresholds for novelty / changepoints /
+# ranking land here in Phases 4-6.
+
+[paths]
+log_dir     = "data/logs"
+deploy_dir  = "data/deploy"
+segment_dir = "data/segments"
+ledger_dir  = "ledger"
+
+[bounds]
+max_items          = 20     # per response, every tool
+search_limit_max   = 50     # search_logs may ask for up to this many templates
+max_bytes_per_item = 2048   # hard cap on any single item's serialised size
+excerpt_bytes      = 600    # raw log excerpt inside a template hit (data, not instructions)
+
+[windows]
+default_lookback_secs        = 900   # when a tool is called without a window: [watermark-15m, watermark]
+deploy_correlation_secs      = 120   # a deploy within this of a change is annotated (Phase 5)
+clock_skew_tolerance_secs    = 2
+
+[ingest]
+poll_ms             = 500
+metrics_scrape_secs = 2
+metrics_ring        = 1800  # samples per series at 2s = 1h
+
+# The target system as the engine sees it. `name` is the instance (log file
+# stem); `service` is the logical service; host ports come from the same env
+# vars Compose uses, so scraping hits what `just up` published.
+[[services]]
+name = "gateway"
+service = "gateway"
+role = "public edge; POST /checkout"
+upstreams = ["orders"]
+port_env = "GATEWAY_PORT"
+default_port = 8080
+has_log = true
+
+[[services]]
+name = "orders"
+service = "orders"
+role = "persists orders; charges via payments (routed per deploy state)"
+upstreams = ["payments", "postgres"]
+port_env = "ORDERS_PORT"
+default_port = 8081
+has_log = true
+
+[[services]]
+name = "payments-v1"
+service = "payments"
+role = "payments service, version v1"
+upstreams = ["redis"]
+port_env = "PAYMENTS_V1_PORT"
+default_port = 8082
+has_log = true
+
+[[services]]
+name = "payments-v2"
+service = "payments"
+role = "payments service, version v2"
+upstreams = ["redis"]
+port_env = "PAYMENTS_V2_PORT"
+default_port = 8083
+has_log = true
+
+[[services]]
+name = "loadgen"
+service = "loadgen"
+role = "synthetic traffic generator"
+upstreams = ["gateway"]
+has_log = true
+
+[[services]]
+name = "postgres"
+service = "postgres"
+role = "orders database"
+
+[[services]]
+name = "redis"
+service = "redis"
+role = "payments cache"
