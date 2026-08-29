@@ -67,9 +67,16 @@ just demo                     # fresh S1 -> Spyglass agent -> gate (you approve)
 #         then: just ledger-check ledger/<id>.jsonl   (digests match, on screen)
 ```
 
-Missing until their phases land: `novel_templates` at rank 1 (P4), the
-changepoint "+N s after D-2" line (P5), the bundle's reduction ratio (P7), and
-the sandbox experiment (P8 — 1:30–2:00 stays unfilmed until then).
+**The novelty screen (0:45–1:00) ✅ available (Phase 4).** The single most
+legible frame in the video: the `novel_templates` response in the session
+page — rank 1 the seeded ERROR template with `has_stack: true` and
+`first_seen_in_window` 0.1 s after the deploy, `meta.engine_latency_ms` in
+single digits. Zoom on `novelty_reason: first_seen_in_window` and the
+`instances: ["payments-v2"]` line.
+
+Missing until their phases land: the changepoint "+N s after D-2" line (P5),
+the bundle's reduction ratio (P7), and the sandbox experiment (P8 — 1:30–2:00
+stays unfilmed until then).
 
 ### 1:30–2:00 — Sandbox experiment — Phase 8
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)

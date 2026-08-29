@@ -16,6 +16,7 @@ like one.
 | [003](ADR-003-mcp-as-the-tool-boundary.md) | MCP as the tool boundary | Exercised in Phase 0; transport question settled by F2 |
 | [004](ADR-004-deterministic-retrieval.md) | Deterministic retrieval where possible | Confronted in Phase 3 — ledger digests re-check |
 | [005](ADR-005-bounded-evidence-never-unrestricted-telemetry.md) | Bounded evidence, never unrestricted telemetry | Confronted in Phase 3 — engine-side bounds built |
+| [006](ADR-006-novelty-via-template-mining.md) | Novelty via template mining, no embeddings | Confronted in Phase 4 — Drain + scoring built, both guards found by the quiet-window check |
 | [009](ADR-009-evidence-ledger.md) | An evidence ledger, not just an RCA | Confronted in Phase 3 — ledger writer built |
 | [015](ADR-015-scenario-corpus-and-bench-are-durable.md) | Scenario corpus and bench harness are durable artifacts | Confronted in Phase 1 — `scenarios/` built |
 | [016](ADR-016-harness-context-management-pinning.md) | Pin harness context-management flags | **New**, forced by a Phase 0 discovery (F7) |
@@ -29,7 +30,6 @@ now would be backfilling in advance.
 
 | ADR | Decision | Expanded at |
 |---|---|---|
-| 006 | Novelty via template mining, no embeddings | Phase 4 |
 | 007 | Changepoint detection via rolling z-score first | Phase 5 |
 | 008 | Evidence ranking as a hand-weighted linear model | Phase 6 |
 | 010 | Sandbox verification before action | Phase 8 |
