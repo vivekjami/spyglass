@@ -149,10 +149,56 @@ bundle stamp `ablation: no-novelty`. Templates stay reachable through
 
 ### F6. What the numbers say
 
-*Filled from `docs/benchmark.md` after the matrix ran — see that file for
-the generated tables; this section reads them.*
+*Read from the generated tables in `docs/benchmark.md`; the per-run table
+there names the file behind every number.*
 
-`[MEASURE AFTER IMPLEMENTATION]`
+`[MEASURE AFTER IMPLEMENTATION — filled when the matrix completes]`
+
+### F6a. `too_soon` protects the verdict, not the bill
+
+The Phase 9 rule — a verification check inside 15 s of the last counted
+one is `too_soon` and not counted — held in every run. What it did not do
+is stop the agent from *asking*: instead of the SOP's `sleep 15`, the
+model filled the interval with `freshness_watermark`, `current_versions`
+and the harness's `get_current_datetime`, then asked again. On S1 that is
+4–5 `verify_recovery` calls (two or three of them `too_soon`) and 18–19
+tool calls per run against 12–14 in Phase 9; on one S2 run, 12
+verification calls and 14 watermarks in a 38-call, 1.28 M-token
+investigation whose engine-side work was five counted checks. Each
+refused check is a model call that re-reads a cached context: the
+engine's refusal costs nothing on the engine and ~25 k cache-read tokens
+on the model. The cheap fix is engine-side and deliberately **not** made
+mid-benchmark: let `verify_recovery` *wait* for the interval before
+answering, so pacing is the engine's, like the verdict. Recorded for
+Phase 11; every cell in the matrix ran the same engine.
+
+### F6b. S2 found a false escalation
+
+One S2 Spyglass run ended `ESCALATED` after its first verification check:
+`worsening (post 12.9 % over 31 req vs incident 9.7 %)`. The rollback was
+right (orders → v1) and the system did recover — the run's own post-run
+measurement shows the edge 5xx falling. What the first check saw was the
+tail: orders requests that had been in flight for up to 9 s under the
+old config completed *after* the rollback, and for the first ~30
+requests the edge's 5xx share was above the incident's blended rate
+(the incident rate is measured over every service's request lines —
+gateway ≈ 30 %, orders and payments 0 % — so "no better than the
+incident" is a low bar right after a latency-shaped fault). The
+`min_requests` floor (20) admitted a 31-request sample; the "rising"
+rule needs two dirty checks (Phase 9), but "no better than the incident"
+fires on one. Diagnosis: escalation on the first check needs either a
+larger sample or a second dirty check, and a latency-shaped fault's
+in-flight tail belongs in the incident window, not the post window.
+Scored as it happened: verification failed for that run; the report
+says `engine: escalation`. Fix and re-measure in Phase 11 as a labelled
+addendum — the matrix stays the matrix.
+
+### F6c. Time to first hypothesis is the wall time here
+
+The model emits no interim prose between tool calls, so the first
+assistant text containing the culprit is the final report; metric 11
+collapses onto metric 10 in every run. Reported as measured, and noted
+as a property of this model's tool-calling style rather than a result.
 
 ### F7. Loose ends, stated
 
