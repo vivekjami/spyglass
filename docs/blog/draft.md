@@ -118,7 +118,32 @@ This section is the honest part. Written as it happens.
   page. If the control group finds the root cause fast, that is a finding,
   and it gets reported.
 
-### Phase 3 onward ⏳
+### Phase 3 — the ugly loop
+
+- **A stale process on the engine's port.** `just mcp-up` said "engine:
+  already on :8791" — it was yesterday's Phase 0 probe, still running, and the
+  harness dutifully listed `probe_ping` as the evidence engine's tools.
+  Port-based liveness is right; it just cannot tell you *which* process owns
+  the port. Check the tool list, not the port.
+- **Create and update take different bodies.** `POST /agents` wants
+  `{name, manifest}`; `PUT /agents/{id}` rejects `name`. The setup script had
+  been dying on the update for an hour without anyone noticing, because the
+  first condition already existed and the second was never reached. The
+  `spyglass` agent did not exist until `just demo` failed on it.
+- **The empty result was the right result.** The first `search_logs` for the
+  seeded error returned nothing — because the default window is the last 15
+  minutes of ingested data, and the incident was an hour old. Windowed
+  evidence means "not now" is an answer, not a bug.
+- **Gemini and schemars disagree twice.** After `Option<Vec<T>>` (Phase 2),
+  `Option<Struct>` — `anyOf` with a `$ref` into `$defs`. Both fail the whole
+  request before the first model call. The rule that survived: tool argument
+  schemas contain no `anyOf`, `$ref`, or `$defs`; optional things are
+  defaults, not unions.
+- **Digests re-check.** Six ledger entries re-executed against the live
+  engine: five matched to the byte, one temporal entry skipped by design.
+  The property ADR-004 promised is a script that exits non-zero.
+
+### Phase 4 onward ⏳
 
 ## The benchmark ⏳
 

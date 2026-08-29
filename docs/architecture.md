@@ -24,17 +24,17 @@ this file never describes code that does not exist.
 
 | ID | Component | Built in | Status |
 |---|---|---|---|
-| C1 | Telemetry ingestion (tailer, normalizer, scraper, backpressure) | Phase 3 | not started |
-| C2 | Evidence store and index (NDJSON segments, template/text/metric indexes) | Phase 3 | not started |
+| C1 | Telemetry ingestion (tailer, normalizer, scraper, backpressure) | Phase 3 | built: tailers + scraper; backpressure = poll cadence, no spill file yet |
+| C2 | Evidence store and index (NDJSON segments, template/text/metric indexes) | Phase 3 | built: in-memory store + template index + metric rings; segments written, not yet read |
 | C3 | Novelty detection (Drain-style mining, novelty scoring) | Phase 4 | not started |
 | C4 | Changepoint detection (guarded rolling z-score, deploy correlation) | Phase 5 | not started |
 | C5 | Evidence ranking (hand-weighted linear model) | Phase 6 | not started |
 | C6 | Evidence bundle generation (bounds, coverage, relationships) | Phase 7 | not started |
-| C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | probe validated (Phase 0) |
-| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | baseline SOP built (Phase 2, the control); Spyglass SOP not started |
+| C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | built: 6 read tools, eids + digests + latency on every response |
+| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | SOP v1 built: triage → hypotheses with eids → contradiction check → correlational labelling → three exits → verify → cited postmortem |
 | C9 | Causal verification (exemplar replay) | Phase 8 | sandbox reach **failed** (Phase 0, F9) → replay-as-MCP-tool planned |
 | C10 | Human approval gate | Phase 9 | live: `rollback` MCP tool gated via `require_approval_for_tools` (Phase 2); idempotency + TOCTOU in the deployer lib (Phase 1) |
-| C11 | Post-action verification loop | Phase 9 | not started |
+| C11 | Post-action verification loop | Phase 9 | crude version in SOP v1: sandbox sleep → watermark → `error_delta` before/after, 2 checks |
 
 ## Harness integration (validated in Phase 0)
 
@@ -103,6 +103,34 @@ loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
 
 Acceptance evidence for the S1 scenario lives in
 [`scenarios/s1-payment-regression/README.md`](../scenarios/s1-payment-regression/README.md).
+
+## Evidence engine (Phase 3 — built, ugly-but-complete)
+
+```
+data/logs/*.jsonl ──tail──▶ normalize ──▶ Store { events, templates(masked), deploys, metric rings, watermarks }
+data/deploy/journal ─tail─▶                        │
+/metrics ×4 ──scrape 2s──▶                          ▼
+                                      tools: search_logs · error_delta · deploy_events
+                                             freshness_watermark · get_evidence · service_topology
+                                                    │  every response: {result, meta}
+                                                    ▼  meta = eids · query_hash · result_digest · window · watermark · lag_ms · engine_latency_ms · bounds
+                                      Investigation (= MCP session): E1..En counter, evidence records, ledger/<session>.jsonl
+```
+
+| Crate | Holds | Notes |
+|---|---|---|
+| `spyglass-core` | `Config` (from `spyglass.toml`), `Event`, `DeployEvent`, `Window`, masking → `template_id`, canonical digests (eids stripped), `LedgerEntry`, `Meta`, item byte-capping | no I/O |
+| `spyglass-engine` | `Store` + ingest (log/journal tailers on threads, async metrics scraper) + the tools + `Investigation` (eid counter, evidence store, ledger writer) | the spec's ingest/index/detect/rank crates live here as modules until they earn a split |
+| `spyglass-mcp` | the read-only `rmcp` server (:8791): stamps eids, computes digests, writes the ledger, attaches `meta` | there is no mutating tool here and never will be |
+
+**Phase 3 shape, stated plainly:** templates are masking-based (numbers, ids,
+hex, timestamps, currency codes → `<*>`) with no Drain tree yet; `search_logs`
+scores by IDF-weighted term fraction plus a phrase bonus — explainable, not
+clever; metrics are ingested and watermarked but no tool reads them yet; the
+store is rebuilt from the source log files on start (≈10 s for 400k lines)
+and segment files are written as a durable copy but not yet read back. A file
+that shrinks (the stack was reset) clears the store and bumps `epoch`, so
+evidence from a previous incident cannot leak into this one.
 
 ## The Kubernetes delta — documented, not built
 

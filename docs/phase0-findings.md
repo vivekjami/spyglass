@@ -134,7 +134,7 @@ one available. `POST /api/v1/settings/mcp-servers` registers one.
 
 ### F3. The Rust ↔ TypeScript MCP seam works ✅ (item 2)
 
-[`crates/phase0-probe`](../crates/phase0-probe) is a throwaway `rmcp` 3.1.4
+`crates/phase0-probe` (a throwaway crate, removed in Phase 3 once the real engine existed — see git history) was an `rmcp` 3.1.4
 streamable-HTTP server exposing `probe_ping` (read-only) and `probe_rollback`
 (simulated mutation). TrueForge registered it and enumerated both tools with the
 `schemars`-derived JSON Schema intact, including per-field descriptions:

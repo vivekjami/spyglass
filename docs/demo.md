@@ -58,7 +58,20 @@ line is "it got there — at two hundred thousand tokens; watch the context
 grow", not "it failed". The accuracy story belongs to S2/S3/S6.
 
 Between takes: `S1_FAST=1 just scenario s1` again (clean state, new run id).
-### 0:45–2:45 — Phase 3–9
+### 0:45–1:30, 2:00–2:45 — Spyglass investigates · approval · ledger ✅ skeleton available (Phase 3)
+
+```bash
+just demo                     # fresh S1 -> Spyglass agent -> gate (you approve) -> verify -> ledger re-check
+# camera: the session page (evidence responses with meta.engine_latency_ms visible),
+#         the gate showing justification_eids, the terminal's ledger line,
+#         then: just ledger-check ledger/<id>.jsonl   (digests match, on screen)
+```
+
+Missing until their phases land: `novel_templates` at rank 1 (P4), the
+changepoint "+N s after D-2" line (P5), the bundle's reduction ratio (P7), and
+the sandbox experiment (P8 — 1:30–2:00 stays unfilmed until then).
+
+### 1:30–2:00 — Sandbox experiment — Phase 8
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
 
 ## Production rules

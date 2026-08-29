@@ -54,5 +54,9 @@ manifest lists it with `require_approval_for_tools: ["rollback"]`, and the CLI
 and the MCP tool call the same library function, so the idempotency and TOCTOU
 behaviour exercised in Phase 1 is the behaviour behind the gate.
 
-Gate timeout behaviour and the post-action verification loop: **pending**
-(Phase 9).
+**Verification loop as built (Phase 3, crude):** the SOP requires, after any
+action, a sandbox `sleep`, a `freshness_watermark` check, then `error_delta`
+(before vs. after) twice; both checks are cited in the postmortem. Measured
+in the Phase 3 acceptance: rollback at 03:34, two clean checks, 20.8% → 0.0%,
+all five verification calls in the ledger. Gate timeout behaviour, escalation
+paths, and a verification budget: **pending** (Phase 9).
