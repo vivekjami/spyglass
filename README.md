@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–7 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–8 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -65,7 +65,7 @@ Concretely, Spyglass inserts an **evidence plane** between production telemetry 
 - A **Rust evidence engine** ingests logs, metrics, and deployment events; mines log templates (Drain-style); scores **novelty**; detects **changepoints**; ranks evidence; and assembles **bounded evidence bundles** — maximum investigative signal per token.
 - The engine is exposed to the agent as a set of **bounded, deterministic-where-possible MCP tools**. The agent never receives unrestricted telemetry access; the baseline agent (the control group) does.
 - The agent runs on **TrueForge**, which supplies the agent loop, subagents, sandbox, human approval gates, and session state. Spyglass builds none of that machinery — it builds the domain brain and the evidence plane underneath it.
-- A suspected root cause is not reported on correlation alone: the agent **replays the captured failing request** against the suspected-bad and known-good versions in the sandbox, converting correlation into experimental causal evidence.
+- A suspected root cause is not reported on correlation alone: the agent **replays the captured failing request** against the suspected-bad and known-good versions in the sandbox, converting correlation into experimental causal evidence. *(Phase 8 as built: the executor is the evidence engine — `get_exemplar_request` → `replay_exemplar` — because the harness sandbox cannot reach the Compose network; ADR-010. Measured on S1: v1 0/20, v2 20/20.)*
 - The only mutating action (`rollback`) sits behind a **human approval gate**, is **idempotent**, and is followed by a **verification loop** — the incident closes only after telemetry confirms recovery.
 - Every consequential tool result is recorded in an append-only **evidence ledger**; the final RCA cites ledger entries (`E1…En`) so every claim is re-checkable.
 
@@ -494,7 +494,9 @@ Core types (crate `spyglass-core`):
 4. **Metadata on everything**: eids, query hash, result digest, time bounds, `engine_latency_ms`, watermark.
 5. **No raw query languages**: no PromQL/SQL passthrough, no arbitrary regex over the store. The tools *are* the query language, shaped to the investigation domain. (This is the deliberate contrast with generic observability MCP passthrough servers.)
 
-### Read tools (Spyglass engine — read-only MCP server)
+### Read tools (Spyglass engine MCP server)
+
+Read-only against the world, with one stated exception: `replay_exemplar` sends bounded, tagged synthetic traffic to the always-on version instances (Phase 8; side effects enumerated in the Safety Model).
 
 | Tool | Inputs | Output (bounded) | Notes |
 |---|---|---|---|
@@ -504,7 +506,8 @@ Core types (crate `spyglass-core`):
 | `error_delta` | window_a, window_b, group_by=service\|route | per-group rate deltas, ranked | cheap triage + verification primitive |
 | `deploy_events` | window, service? | deploy/config events | includes the journal verbatim |
 | `service_topology` | — | static edges from Compose config (v0) | derived-from-traces is Future / optional |
-| `get_exemplar_request` | template_id \| route+status | one sanitized captured request (method, path, headers subset, body) | feeds the sandbox replay |
+| `get_exemplar_request` | template_id \| eid \| route+status \| event_id, window? | one sanitized captured request (method, path, header subset, capped body), its `chain` through the services, the 5xx `origin`, and whether it is replayable | the input for the causal check; deterministic (earliest captured match) |
+| `replay_exemplar` | exemplar (eid \| template_id \| req_id), service, versions?, n≤50 | per version: k/N failures, statuses, latency, distinct failure bodies; `comparison` {proportions, Δ, threshold, verdict `separated` \| `not_separated`, reading} | **the causal check** (C9); live routing untouched; its own traffic excluded from evidence; not deterministic (a live experiment) |
 | `build_evidence_bundle` | window, focus_service?, limit?, weights? | the bundle (C6): ranked, deduped, kind-diverse head, ≤ 8 KB, `coverage`, `relationships` by ref, `incident_t0` | the one-call investigation starter; SOP v4 opens with it |
 | `get_evidence` | eid | full underlying record | dereference for audits |
 | `freshness_watermark` | — | newest ts per source + lag_ms; `safe_log_ts` (every active source read past it — where windows end), `caught_up` (files fully read after a start) | **SOP requires checking before concluding** |
@@ -527,7 +530,7 @@ Spyglass does not implement an agent loop — TrueForge runs it. What Spyglass i
 2. **Hypotheses.** From the bundle, write 1–3 candidate hypotheses *with the eids that motivate each*.
 3. **Fan-out (budgeted).** Spawn the three analysts — logs/novelty, metrics/changepoints, change/deploys — each with a stated budget (default: ≤6 tool calls, ≤8k tokens). **Phase 0 finding:** TrueForge subagents are *dynamic* — the lead calls a built-in `create_sub_agent` tool with generated instructions, and subagents inherit the root agent's tools; there is no per-subagent tool or budget field. Budgets are therefore restated in the generated subagent instructions (advisory) and *enforced* where they can be: `config.iteration_limit` at the lead level plus engine-side per-client rate limiting (see `docs/phase0-findings.md` F5). Analysts return *findings with eids*, not raw dumps.
 4. **Contradiction check.** Before advancing a hypothesis, the lead must search for disconfirming evidence: does the novel template predate the deploy (`get_evidence`)? Does the changepoint precede the deploy? Is another service's delta larger (`error_delta group_by=service`)? A hypothesis that survives is promoted; one that does not is recorded as rejected, with eids.
-5. **Causal check.** For a deploy-shaped hypothesis: sandbox replay (next section). For non-deploy shapes (S3 redis pressure): targeted confirmation queries instead, and the RCA honestly labels its evidence *correlational*.
+5. **Causal check.** For a deploy-shaped hypothesis: sandbox replay (next section). For non-deploy shapes (S3 redis pressure): targeted confirmation queries instead, and the RCA honestly labels its evidence *correlational*. **Phase 8 as built (SOP v5):** `get_exemplar_request(eid of the top ERROR template)` → `replay_exemplar(exemplar, service, [from_version, version], n=20)`; `separated` earns "caused" (for this failure mode), `not_separated` says which way — no version (exemplar does not reproduce it; try one other), every version (reject the deploy hypothesis), partial (correlational only); no version pair → skip and say so. The fan-out (step 3) is conditional on the bundle leaving a hypothesis unresolved; the analyst briefs are in `agent/subagents/`.
 6. **Confidence + proposal.** The SOP defines three exits: **act** (strong causal evidence → propose gated rollback citing eids); **report-only** (correlational-but-coherent → RCA without action proposal); **refuse/escalate** (evidence insufficient or contradictory → say exactly that, list what additional evidence would decide it, escalate). Scenario S6 exists to test the third exit — an agent that knows when it does not know.
 7. **Act → verify → close** per C11, then emit the postmortem from the ledger.
 
@@ -554,6 +557,8 @@ The critical move that separates Spyglass from correlation-only investigation, a
 
 **Honest limits, stated in the RCA template:** one exemplar class replayed N=20 times is strong evidence for *this failure mode*, not proof of the only failure mode; deterministic bugs separate cleanly (expect ~0/20 vs ~20/20 for S1), load-dependent bugs (S4) may not separate at N=20 and the SOP then reports correlational confidence instead of manufacturing certainty. No p-values are claimed at this N; the raw proportions are reported.
 
+**Phase 8 as built** ([ADR-010](docs/adr/ADR-010-sandbox-verification-before-action.md)): fallback (A) is what shipped. The gateway captures every checkout (`kind=request_capture`: method, path, a four-header subset, body ≤ 1 KB — auth headers never captured); the engine indexes captures by request id, and `get_exemplar_request` returns the **earliest** captured request that matches a template (or a route + status), sanitized a second time on the way out (auth/cookie/token headers dropped, secret-shaped body keys and card-like digit runs redacted, values capped), with the request's `chain` through gateway → orders → payments and its 5xx `origin`. `replay_exemplar` sends that request N times to each always-on version's published port with `replay-*` request ids; the tailer drops those lines, so the experiment never moves a count, a rate or a watermark. Both proportions land in **one** ledger entry with **two** evidence ids, `comparison.verdict` is `separated` / `not_separated` against `replay.separation_min_delta` (0.5, config), and the `reading` states the limit every time. Measured on S1 (fast timeline): the first non-USD checkout after `D-2`, replayed 20× — **v1 0/20, v2 20/20**, Δ 1.00, `separated`, ~0.9 s; a request that succeeded, replayed the same way — **0/20 vs 0/20, `not_separated`**: the tool can say no. The baseline gets the raw counterpart, `http_request` (one request per call), so the comparison stays shaped-vs-raw.
+
 
 ---
 
@@ -563,7 +568,7 @@ Safety here is architectural, not aspirational: every property below is enforced
 
 ### Read/write separation
 
-- **Read operations** (always allowed, no gate): every Spyglass engine tool. All are side-effect-free against the world; the only state they touch is the ledger (append-only) and engine caches.
+- **Read operations** (always allowed, no gate): every Spyglass engine tool. All are side-effect-free against the world; the only state they touch is the ledger (append-only) and engine caches. **One stated exception (Phase 8):** `replay_exemplar` sends ≤ 50 synthetic requests per version straight to the always-on instances — never through live routing, never a config or deploy change; the requests are tagged (`replay-*` request ids, `x-spyglass-replay`) and dropped at ingest so the experiment is never evidence of itself; the instances' `/metrics` counters and the payments cache do see them, and the result says so.
 - **Write operations** (restricted): exactly one exists — `rollback` — on a separate MCP server, marked approval-required in TrueForge, idempotent, TOCTOU-checked, journaled. Restart, config mutation, and deploy are *not* exposed to the agent in v0; adding any future mutation requires the same pattern (own tool, own gate, own idempotency key, own verification) — that is the rule, recorded here so scope creep has to argue with a document.
 
 ### Adversarial telemetry: telemetry is DATA, not INSTRUCTIONS
@@ -599,8 +604,8 @@ An append-only JSONL file per investigation (`ledger/<incident_id>.jsonl`), writ
 {"n":2,"eid":"E2","ts":"…","tool":"detect_changepoints","args_hash":"77b1…","result_digest":"aa04…","summary":"orders.errors_total step 8.3x @12:04:31, +118s after D-77","latency_ms":3}
 {"n":3,"eid":"E3","ts":"…","tool":"novel_templates","args_hash":"1c9e…","result_digest":"5b2f…","summary":"novel ERROR template first_seen 12:04:31 payments ×412","latency_ms":2}
 {"n":4,"eid":"E4","ts":"…","tool":"get_exemplar_request","args_hash":"…","result_digest":"…","summary":"exemplar failing request captured (sanitized)","latency_ms":1}
-{"n":5,"eid":"E5","ts":"…","tool":"sandbox.replay","args_hash":"…","result_digest":"…","summary":"replay v1: 0/20 failures","latency_ms":18400}
-{"n":6,"eid":"E6","ts":"…","tool":"sandbox.replay","args_hash":"…","result_digest":"…","summary":"replay v2: 19/20 failures","latency_ms":19100}
+{"n":5,"eid":"E5","ts":"…","tool":"replay_exemplar","args_hash":"…","result_digest":"…","summary":"replay v1: 0/20 failures","latency_ms":18400}
+{"n":6,"eid":"E6","ts":"…","tool":"replay_exemplar","args_hash":"…","result_digest":"…","summary":"replay v2: 19/20 failures","latency_ms":19100}
 {"n":7,"eid":"E7","ts":"…","tool":"verify.error_delta","args_hash":"…","result_digest":"…","summary":"post-rollback error rate within 1.1x baseline for 2 checks","latency_ms":2}
 ```
 
@@ -650,7 +655,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 **ADR-009 — An evidence ledger, not just an RCA.**
 *Context:* an uncited RCA is unfalsifiable prose. *Decision:* append-only JSONL of every consequential call; eids as the citation currency; postmortem rendered from it. *Alternatives:* rely on TrueForge session logs — rejected as primary: harness logs record *conversation*, the ledger records *evidence semantics* (args hash, digest, eid) and survives independent of harness internals; they complement. *Consequences:* a thin client wrapper on tool calls; a small cost for a large trust gain. *Reversal:* none — removing it removes the project's accountability story.
 
-**ADR-010 — Sandbox verification before action.**
+**ADR-010 — Sandbox verification before action.** *(Expanded and amended at Phase 8: [`docs/adr/ADR-010`](docs/adr/ADR-010-sandbox-verification-before-action.md) — the executor is the engine, one call lands both proportions as two eids.)*
 *Context:* correlation is cheap and wrong often enough to matter. *Decision:* deploy-shaped hypotheses must attempt an exemplar replay experiment (v_good vs v_bad) in the TrueForge sandbox before any action proposal. *Alternatives:* act on correlation + rollback-is-cheap — rejected: normalizes exactly the behavior the safety model exists to prevent, and forfeits the project's central demo moment; canary-in-prod — rejected: mutates live routing, out of scope. *Consequences:* needs sandbox→Compose networking (Phase 0 item; bisection fallback defined); adds ~30–60s to investigations — a price the benchmark reports rather than hides. *Reversal:* per-scenario the SOP may skip replay where no version pair exists (S3), downgrading claims honestly.
 
 **ADR-011 — Human approval for destructive actions.**
@@ -677,22 +682,22 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 spyglass/                         ✓ built   ○ planned (phase)
 ├── README.md                     ✓ this document — the source of truth
 ├── LICENSE                       ✓ MIT
-├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | s7-check | validate | demo | ledger-check   ○ bench (P10)
+├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | s7-check | s8-check | validate | demo | ledger-check   ○ bench (P10)
 ├── docker-compose.yml            ✓ target system                                     ○ engine service (P3)
 ├── .env.example                  ✓ model key, host ports
 ├── spyglass.toml                 ✓ engine config: paths, bounds, windows, ingest, services
 ├── Cargo.toml                    ✓ workspace
 ├── crates/
-│   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events
+│   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events, http_request (one request, like curl — the raw counterpart of the replay)
 │   ├── spyglass-core/            ✓ Event/DeployEvent/Window types, config, masking → template ids, canonical digests, ledger entries
 │   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + changepoints + ranking + bundles + tools + investigations/ledger
-│   ├── spyglass-mcp/             ✓ rmcp server: 9 read tools (build_evidence_bundle first; novel_templates what, detect_changepoints when), bounds, eids, digests, latency
-│   └── spyglass-cli/             ○ inspect | ingest --replay (later)
+│   ├── spyglass-mcp/             ✓ rmcp server: 11 tools (build_evidence_bundle first; novel_templates what, detect_changepoints when; get_exemplar_request → replay_exemplar the causal check), bounds, eids, digests, latency
+│   └── spyglass-cli/             ○ inspect (later)
 ├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
 ├── target-system/
 │   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
 │   └── Dockerfile, requirements.txt                   ✓
-├── agent/                        ✓ sop.md (Spyglass SOP v4, bundle-first), baseline-sop.md   ○ analyst briefs (P8)
+├── agent/                        ✓ sop.md (Spyglass SOP v5: bundle-first, causal check before action), baseline-sop.md, subagents/ (analyst briefs; conditional fan-out)
 ├── scenarios/
 │   ├── SCHEMA.md                 ✓ ground-truth format
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
@@ -1066,7 +1071,7 @@ How a company like TrueFoundry **could** derive value from this capability class
 
 ### Optional — upside, in drop-order-reverse priority
 
-- [x] Changepoint detection (P5) · [x] Ranking + bundles (P6/P7) · [ ] Sandbox causal replay (P8) · [ ] Subagents in parallel · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
+- [x] Changepoint detection (P5) · [x] Ranking + bundles (P6/P7) · [x] Causal replay (P8, on the engine — ADR-010) · [~] Subagents (briefs + conditional fan-out in SOP v5; not triggered on S1) · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
 
 (Yes: changepoints through replay are listed optional relative to the *mandatory floor* — the floor is what guarantees a qualifying submission; the SHOULD list is what makes it a winning one. Both lists are attacked in phase order.)
 

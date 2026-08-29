@@ -222,7 +222,47 @@ This section is the honest part. Written as it happens.
   template — the file had not been read yet. The engine now says
   `caught_up`, and the checks wait for it.
 
-### Phase 8 onward ⏳
+### Phase 8 — the experiment, and the experiment's own footprints
+
+- **Correlation was already good; the point was to stop calling it cause.**
+  By Phase 7 the bundle put the fault deploy 0.6 s before the first error
+  and the agent wrote "correlational" on every RCA, because the SOP made
+  it. Phase 8 gave it the tool to earn the other word: take the request a
+  client actually sent, replay it twenty times against each always-on
+  version, compare. On S1: `v1 0/20, v2 20/20`. Under a second. A request
+  that had succeeded, replayed the same way: `0/20 vs 0/20, not_separated`
+  — the tool says no as readily as yes, which is the property that makes
+  the yes worth anything.
+- **The executor is the engine, not the sandbox.** Phase 0 found the
+  harness sandbox cannot reach the Compose network, so the "agent writes a
+  replay script" story became "agent designs the experiment, engine runs
+  it". The experiment is unchanged: same input, versions varied, outcome
+  measured. What changed is who sends the bytes. ADR-010 was amended, not
+  reversed, and the amendment says what was lost.
+- **An experiment leaves footprints in the thing it measures.** Forty
+  replays against payments produce forty log lines; the engine tails those
+  logs. Left alone, the causal check would have inflated the error count it
+  was checking, put a traffic changepoint on `payments-v1` (which has no
+  live traffic during the fault), and dirtied the verification window.
+  Every replay now carries a `replay-*` request id and the tailer drops
+  those lines: 80 sent, exactly 80 excluded, zero `payments-v1` requests in
+  the evidence. Measured, because "we tag it" is a claim.
+- **Sanitize twice.** The gateway captures four headers and never an auth
+  header. The engine strips auth-shaped headers and redacts secret-shaped
+  body fields again on the way out anyway, with unit tests, because the
+  capture allowlist is a property of *this* gateway and the tool has to
+  survive a real one.
+- **The default window was wrong for exemplars.** "Last fifteen minutes"
+  is right for everything else; for the exemplar of a failure you want the
+  *first* request that failed that way, whenever it was. The tool's default
+  is now all history, the earliest match — which also does not move as data
+  arrives, so it re-checks from the ledger.
+- **Fairness cuts both ways.** The baseline got `http_request` — one call,
+  one request, like `curl` — so it *can* test a version pair if it thinks
+  to. What it does not get is the twenty-per-version comparison with a
+  threshold and a verdict. That is the treatment.
+
+### Phase 9 onward ⏳
 
 ## The benchmark ⏳
 

@@ -390,7 +390,9 @@ stack**, and there is no supported knob to change that. Patching the harness
 bundle is not an option: not reproducible on a judge's machine, and exactly the
 "rebuild sponsor infrastructure" anti-pattern the spec rules out.
 
-**Fallbacks, in order of preference — decision needed before Phase 8:**
+**Fallbacks, in order of preference — decision needed before Phase 8.**
+*Decided at Phase 8: (A) built; measured v1 0/20 vs v2 20/20 on S1;
+[ADR-010](adr/ADR-010-sandbox-verification-before-action.md) amended.*
 
 - **(A) Replay as a bounded MCP tool — recommended.** Move the experiment into
   the evidence plane: `replay_exemplar(template_id, versions[], n)` on the

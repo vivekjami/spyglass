@@ -2,7 +2,7 @@
 
 **Objective (spec):** `build_evidence_bundle` per C6 with bounds and coverage
 stats. The "184,203 events → 12 items" line.
-**Built:** 2026-08-29, 14:30–16:30 IST (09:00–11:00 UTC), together with
+**Built:** 2026-08-29, 13:50–15:00 IST (08:20–09:30 UTC; run files 09:20–09:29 UTC), together with
 Phase 6 · **PR:** #7
 **Acceptance bar (spec):** bundle for S1 ≤ 20 items / ≤ 8 KB total, contains
 the three key facts, reports `reduction_ratio`; SOP starts from the bundle.

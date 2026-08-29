@@ -17,6 +17,19 @@ Adding any future mutation requires the same pattern: its own tool, own gate,
 own idempotency key, own verification. That rule is recorded here so scope creep
 has to argue with a document.
 
+**The one read-plane tool that touches the world (Phase 8):** `replay_exemplar`
+sends synthetic requests to the always-on version instances. What bounds it,
+enforced in code, not prompt:
+
+| Property | How |
+|---|---|
+| Never a routing, config or deploy change | replays go straight to each instance's published port; the deployer is not involved |
+| Bounded | `n` clamped to `replay.max_n` (50) per version; per-request timeout; body capped |
+| Sanitized before it is sent | auth/cookie/token/session headers dropped, secret-shaped body keys and card-like digit runs redacted (`spyglass-core::sanitize_*`, unit-tested) — on top of the gateway's own capture allowlist |
+| Not evidence of itself | every replay carries a `replay-*` request id and `x-spyglass-replay`; the services stamp `replay` on the line; the tailer drops those lines (counted in `freshness_watermark.replay_lines_excluded`), so no count, rate, template or watermark moves. Measured: 80 requests → exactly 80 lines excluded, zero `payments-v1` requests in the evidence during the replay |
+| Side effects that remain, stated on every result | the instances' `/metrics` counters and the payments cache (`charge:<req_id>`, TTL 300 s) do see the traffic |
+| No approval gate | it mutates nothing the investigation can act on; gating it would only slow the check that stops a wrong rollback |
+
 ## Telemetry is DATA, not INSTRUCTIONS
 
 Logs are attacker-writable text that flows into the model's context. Layered
