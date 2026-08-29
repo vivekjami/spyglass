@@ -19,7 +19,7 @@ asymmetry here invalidates the result. Checked per condition file:
 | **Model** | `"$MODEL_A"` in every condition; resolved to the same catalog entry |
 | **Harness settings** | `config` block pinned explicitly and identically: `iteration_limit`, sandbox, sub-agents, `compaction: off`, `large_tool_response: off` (ADR-016), `preload: true` on every MCP server (deferred-loading calls would otherwise land unevenly on the tool-call metric) |
 | **Information access** | Both conditions read the same files and endpoints. Mapping below. |
-| **Action path** | The *same* `spyglass-deployer` MCP server, the same `rollback` tool, the same `require_approval_for_tools: ["rollback"]` gate, the same journal |
+| **Action path** | The *same* `spyglass-deployer` MCP server, the same `propose_rollback` → `rollback(proposal_id, …)` flow (Phase 9: system-minted idempotency key, expiry, TOCTOU check, restatement at the gate), the same `require_approval_for_tools: ["rollback"]` gate, the same journal |
 | **Alert** | The same first message, from the same watcher |
 | **What differs** | Only the read tools: raw (`tail`/`grep`/`curl`-shaped) vs. shaped (templates, novelty, changepoints, ranking, bundles, evidence ids) |
 
@@ -33,6 +33,7 @@ asymmetry here invalidates the result. Checked per condition file:
 | Topology | `list_services` (from the compose layout) | `service_topology` |
 | All of the above, once | — (the baseline composes its own picture from the raw tools) | `build_evidence_bundle` (the three sources above, deduped, ranked, bounded to 8 kB; the same facts, no new access) |
 | Routing state | `current_versions` | `current_versions` |
+| Post-action verification | `get_metric` twice, judged by the agent | `verify_recovery`, judged by the engine (two consecutive clean checks close; worsening or timeout escalates); the ledger's `verified_recovery` / `escalation` entry is what the benchmark scores |
 | Captured requests | in the gateway log (`kind=request_capture`), via grep | `get_exemplar_request` (one, sanitized, with its chain through the services) |
 | The causal check (Phase 8) | `http_request` — one request per call to any instance's published port, any body; the agent scripts the v1-vs-v2 comparison itself if it thinks of it, and its own requests land in the raw logs it reads | `replay_exemplar` — N per version, proportions side by side, a stated threshold and verdict; the engine keeps the experiment out of the evidence |
 
