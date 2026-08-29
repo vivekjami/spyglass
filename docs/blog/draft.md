@@ -163,7 +163,40 @@ This section is the honest part. Written as it happens.
   tests, not on S1, whose variables are all maskable. Said plainly so the
   algorithm is not credited for the corpus.
 
-### Phase 5 onward ⏳
+### Phase 5 — changepoints, and a detector that was right about the wrong thing
+
+- **The steady-state test failed on the first run — correctly.** Twelve
+  minutes of quiet traffic flagged a 1.9× latency doubling on gateway and
+  orders, two buckets long, "no deploy within ±120 s". The gateway log
+  agreed: 60 → 125 → 103 → 61 ms, while `cargo build` was loading the same
+  laptop. Later the same detector reported traffic collapsing to zero and
+  resuming two and a half hours later — the machine had suspended. Every
+  one a real change in the series, every one annotated with no nearby
+  deploy, which is the failure-mode row in the spec ("no nearby change
+  event → deprioritised") doing its job. "No changepoints on steady state"
+  is a claim about the host as much as the detector; it is measured on an
+  idle one and says so.
+- **A bucket boundary must never say "before the deploy".** A down step has
+  no first anomalous event, so its timestamp is a bucket start — up to 10 s
+  before a deploy that landed inside the same bucket. The SOP's
+  contradiction check asks exactly "does the changepoint precede the
+  deploy?". The tool now reports the precision of every `at` and refuses to
+  order a bucket edge against a deploy inside it.
+- **The spec's 2-minute guard would have blanked the demo.** The fast
+  timeline has 90 s of history before the fault; a 120 s guard leaves no
+  baseline. The guard only needs to outlast confirmation — 30 s does — and
+  keeping a change flagged for minutes is another tool's job.
+- **The series come from the logs.** The scraper's counters are wall-clock
+  stamped and gone on restart; the request lines carry the same facts with
+  event time, and rebuild from the files. A changepoint is deterministic on
+  frozen data, and its ledger entry re-checks. The diagram's arrow moved.
+- **Sixteen items said eight things.** Rate and count on the same labels,
+  service and route for a one-route service — grouped, the response went
+  from headlines truncated at the byte cap to 10 kB with room. The cascade
+  came out in causal order from `at` ascending alone: payments, orders 5 ms
+  later, gateway 3 ms after that.
+
+### Phase 6 onward ⏳
 
 ## The benchmark ⏳
 

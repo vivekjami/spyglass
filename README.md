@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–4 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–5 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -227,8 +227,9 @@ Every feature that does not improve the technical thesis or the demo is a liabil
         │  ingest:  log tailer → normalizer            │        │  versioned deploy/rollback,  │
         │           → Drain-style template miner       │        │  idempotency keys,           │
         │           → novelty scorer                   │        │  deploy-event journal        │
-        │           metrics scraper → ring buffers     │        └──────────────┬───────────────┘
+        │           → request series (10 s buckets)    │        └──────────────┬───────────────┘
         │           → changepoint detector             │                       │ controls
+        │           metrics scraper → ring buffers     │                       │
         │  store:   append-only time-bucketed segments │                       ▼
         │           (segment file IS the WAL)          │        ┌──────────────────────────────┐
         │  serve:   search_logs · novel_templates ·    │  logs  │  TARGET SYSTEM (Compose)     │
@@ -394,11 +395,13 @@ Chosen because it is explainable in one sentence ("never seen before, or suddenl
 
 ### C4. Changepoint detection
 
-**Baseline:** for each metric series, rolling mean/σ over a trailing window that *excludes* the most recent guard interval (default: baseline = [-15m, -2m], guard = last 2m), so the anomaly cannot contaminate its own baseline.
+**Baseline:** for each metric series, rolling mean/σ over a trailing window that *excludes* the most recent guard interval, so the anomaly cannot contaminate its own baseline. **Phase 5 as built:** baseline = the 15 min before the bucket, guard = **30 s** (the spec said 2 min; 30 s keeps the baseline clean through the two-bucket confirmation and still leaves six baseline buckets on the 90 s fast timeline the demo uses — a 2 min guard leaves none there). σ is floored per series kind (counts: `max(1, √mean)`; rates: 1 pt; latency: `max(2 ms, 5 %)`) so a flat baseline cannot turn the first wobble into `z = ∞`. Fewer than six real baseline buckets → z is *undetermined* for that bucket, never inflated.
 
-**Detector (v0): rolling z-score on 10s aggregates** — flag when `|z| ≥ 4` for ≥2 consecutive buckets; report the first flagged bucket as the changepoint timestamp with the magnitude (`8.3× baseline error rate`). **CUSUM** as a second detector for slow drifts (S4 connection-pool leak) — *decision pending implementation experiment*; ship z-score first, add CUSUM only if S4 demands it. Offline algorithms (PELT/BinSeg) are deliberately rejected for v0: streaming context, and explainability beats optimality here.
+**Series (Phase 5 correction):** the detector reads the **request lines in the logs** — every one carries service, instance, route, status and latency — and computes `error_rate`, `errors_total`, `requests_total`, `latency_ms_mean` per service, per service+route and per instance, on 10 s buckets aligned to the epoch. Event-time stamped and rebuilt from the files on every engine start, so a changepoint is deterministic on frozen data and its ledger entry re-checks (ADR-004). The scraped Prometheus counters are wall-clock stamped and in-memory; they are ingested and watermarked for freshness, not fed to the detector (ADR-007).
 
-**Deployment correlation:** every changepoint is annotated with deploy events within ±120s (configurable), producing the single most valuable structured fact in the system: *"error-rate changepoint at 12:04:31, 118s after deploy payments v2."* Correlation is computed by the engine; **causal language is reserved for the sandbox result** (C9).
+**Detector (v0): rolling z-score on 10s aggregates** — flag when `|z| ≥ 4` for ≥2 consecutive buckets; report the first flagged bucket as the changepoint with the magnitude (`8.3× baseline error rate`; *"from zero"* when the baseline is 0). `at` is refined to the first anomalous event inside that bucket where that is well defined — the first 5xx for an error series going up, the first request for traffic appearing — and the precision is reported; a drop is an absence and keeps the bucket start. One item per label set, bucket and direction: the normalised rate speaks for the group, the other metrics that moved with it ride in `also_changed`, and a single-route service's aggregate is folded into its route series (S1: 16 raw runs → 6 items, ≤ 1.1 kB each — the first agent run showed a 16 kB response costing 83 % more input tokens, so the default shape is lean by design). Ordered by `at` ascending — the earliest change is the likeliest origin (on S1: payments, then orders 5 ms later, then gateway). **CUSUM** as a second detector for slow drifts (S4 connection-pool leak) — ship z-score first, add CUSUM only if S4 demands it. Offline algorithms (PELT/BinSeg) are deliberately rejected for v0: streaming context, and explainability beats optimality here.
+
+**Deployment correlation:** every changepoint is annotated with deploy events within ±120s (configurable), producing the single most valuable structured fact in the system: *"error-rate changepoint at 12:04:31, 118s after deploy payments v2."* The join is precision-aware: an event-precise `at` orders against the deploy exactly; a bucket-start `at` can never claim to *precede* a deploy that landed in the same bucket (`relation: same_bucket_order_unresolved`), so a 10 s boundary cannot hand the contradiction check a false "before". Only journal entries inside the evidence window (`ts ≤ window.to`) join, so the result is deterministic on frozen data and re-checks from the ledger — the agent's own rollback landing seconds after a call must not rewrite that call's evidence. Correlation is computed by the engine; **causal language is reserved for the sandbox result** (C9). Measured on S1 (Phase 5): the orders error-rate changepoint **+0.6 s after `D-2`**, the benign deploy annotated on nothing, twelve idle minutes of steady traffic → zero changepoints over 32 series.
 
 ### C5. Evidence ranking
 
@@ -493,7 +496,7 @@ Core types (crate `spyglass-core`):
 |---|---|---|---|
 | `search_logs` | query, services?, window, limit≤50 | scored hits: template_id, excerpt (capped), count, eids | BM25-style; excerpts wrapped as data |
 | `novel_templates` | window, baseline?, min_score?, limit≤20 | ranked novel/bursting templates + first_seen + exemplar eids | the headline tool |
-| `detect_changepoints` | series?/service?, window, limit≤20 | changepoints + magnitude + nearest_deploy | z-score v0 |
+| `detect_changepoints` | metrics?, service?, route?, window, baseline?, limit≤20 | changepoints (one per label set / bucket / direction) + `at` with precision + magnitude + `nearest_deploy` with offset and relation | z-score v0; `baseline` = a fixed window (e.g. the incident) turns it into a recovery check |
 | `error_delta` | window_a, window_b, group_by=service\|route | per-group rate deltas, ranked | cheap triage + verification primitive |
 | `deploy_events` | window, service? | deploy/config events | includes the journal verbatim |
 | `service_topology` | — | static edges from Compose config (v0) | derived-from-traces is Future / optional |
@@ -634,8 +637,8 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 **ADR-006 — Novelty detection via template mining (and no embeddings).**
 *Context:* the incident signal is "what is new," and logs are machine-templated text. *Decision:* Drain-style clustering + first-seen/burst scoring; no vector search in v0. *Alternatives:* embedding similarity — rejected for v0: heavier, slower, unexplainable rankings, and templated logs make lexical structure nearly lossless; raw grep — rejected: no notion of "new." *Consequences:* semantically-novel-but-lexically-similar messages can be missed (accepted risk, noted in Failure Modes); an embeddings pass is Future / optional *behind evidence*. *Reversal:* if Phase 4 shows Drain missing seeded faults, revisit — and report the miss.
 
-**ADR-007 — Changepoint detection via rolling z-score first.**
-*Context:* the agent needs "when did behavior change," cheaply, streaming. *Decision:* z-score on 10s aggregates with guarded baselines; CUSUM optional for drifts. *Alternatives:* PELT/BinSeg — rejected v0: offline, harder to explain, marginal gain at demo scale; learned detectors — rejected: off-thesis. *Consequences:* slow leaks (S4) may need CUSUM; threshold tuning is config. *Reversal:* detector is a trait; adding one is additive.
+**ADR-007 — Changepoint detection via rolling z-score first.** *(Expanded in full at Phase 5: [`docs/adr/ADR-007`](docs/adr/ADR-007-changepoints-via-rolling-zscore.md).)*
+*Context:* the agent needs "when did behavior change," cheaply, streaming. *Decision:* z-score on 10s aggregates with guarded baselines and σ floors, on request series derived from the logs (deterministic, re-checkable) rather than the scraped counters; guard 30 s; `at` refined to the first anomalous event; precision-aware deploy join; CUSUM optional for drifts. *Alternatives:* PELT/BinSeg — rejected v0: offline, harder to explain, marginal gain at demo scale; learned detectors — rejected: off-thesis; a robust σ (MAD) — not adopted, one known miss recorded. *Consequences:* slow leaks (S4) may need CUSUM; threshold tuning is config, tuned on S1 only and said so. *Reversal:* detector is a function over a bucketed series; adding one is additive.
 
 **ADR-008 — Evidence ranking as a hand-weighted linear model.**
 *Context:* many candidate items, small budget. *Decision:* transparent linear score over novelty/proximity/severity/deploy-correlation/frequency/relevance; weights in config. *Alternatives:* learning-to-rank — rejected: no training data, no explainability; LLM-as-ranker — rejected: puts the model back on the hot path the engine exists to shorten. *Consequences:* weights are opinions — stated, tuned on S1–S3, and inspectable in every ledger entry. *Reversal:* the scorer is a pure function; swap freely with evidence.
@@ -670,7 +673,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 spyglass/                         ✓ built   ○ planned (phase)
 ├── README.md                     ✓ this document — the source of truth
 ├── LICENSE                       ✓ MIT
-├── justfile                      ✓ up | scenario s1 | watch | s1-check | validate   ○ demo (P3+) | bench (P10)
+├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | validate | demo | ledger-check   ○ bench (P10)
 ├── docker-compose.yml            ✓ target system                                     ○ engine service (P3)
 ├── .env.example                  ✓ model key, host ports
 ├── spyglass.toml                 ✓ engine config: paths, bounds, windows, ingest, services
@@ -678,14 +681,14 @@ spyglass/                         ✓ built   ○ planned (phase)
 ├── crates/
 │   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events
 │   ├── spyglass-core/            ✓ Event/DeployEvent/Window types, config, masking → template ids, canonical digests, ledger entries
-│   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + tools + investigations/ledger (changepoints P5, rank P6/P7 land here)
-│   ├── spyglass-mcp/             ✓ rmcp server: 7 read tools (novel_templates is the headline), bounds, eids, digests, latency
+│   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + changepoints + tools + investigations/ledger (rank P6/P7 land here)
+│   ├── spyglass-mcp/             ✓ rmcp server: 8 read tools (novel_templates what, detect_changepoints when), bounds, eids, digests, latency
 │   └── spyglass-cli/             ○ inspect | ingest --replay (later)
 ├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
 ├── target-system/
 │   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
 │   └── Dockerfile, requirements.txt                   ✓
-├── agent/                        ✓ sop.md (Spyglass SOP v1), baseline-sop.md            ○ analyst briefs (P8)
+├── agent/                        ✓ sop.md (Spyglass SOP v3), baseline-sop.md            ○ analyst briefs (P8)
 ├── scenarios/
 │   ├── SCHEMA.md                 ✓ ground-truth format
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
@@ -699,9 +702,9 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── README.md motivation.md architecture.md progress.md     ✓
 │   ├── phase0-findings.md phase1-findings.md                    ✓ per-phase records
 │   ├── safety.md benchmark.md demo.md                           ✓ scaffolds, filled by their phases
-│   ├── adr/                      ✓ 001 002 003 015 016 017 in full; the rest indexed, expanded when confronted
+│   ├── adr/                      ✓ 001–007 009 015 016 017 in full; the rest indexed, expanded when confronted
 │   └── blog/draft.md             ✓ grown incrementally
-├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, ledger-check.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
+├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, ledger-check.py, changepoint-check.py, mcp_client.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
 ├── data/                         · runtime only, gitignored: logs, deploy state, scenario run snapshots
 └── .github/workflows/ci.yml      ○ fmt, clippy, tests, s1 smoke (P11)
 ```
@@ -1059,7 +1062,7 @@ How a company like TrueFoundry **could** derive value from this capability class
 
 ### Optional — upside, in drop-order-reverse priority
 
-- [ ] Changepoint detection (P5) · [ ] Ranking + bundles (P6/P7) · [ ] Sandbox causal replay (P8) · [ ] Subagents in parallel · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
+- [x] Changepoint detection (P5) · [ ] Ranking + bundles (P6/P7) · [ ] Sandbox causal replay (P8) · [ ] Subagents in parallel · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
 
 (Yes: changepoints through replay are listed optional relative to the *mandatory floor* — the floor is what guarantees a qualifying submission; the SHOULD list is what makes it a winning one. Both lists are attacked in phase order.)
 
