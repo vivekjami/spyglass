@@ -88,6 +88,41 @@ def proposal_of(evs: list[dict], tool_call_id: str) -> dict:
     return {"name": "?", "arguments": None}
 
 
+def engine_session_of(evs: list[dict]) -> str | None:
+    return next((s.get("session_id") for e in evs if e.get("type") == "mcp.initialize"
+                 for s in e.get("mcp_servers", []) if s.get("name") == "spyglass-engine"), None)
+
+
+def ledger_entries(engine_sid: str | None) -> list[dict]:
+    lp = ROOT / "ledger" / f"{engine_sid}.jsonl" if engine_sid else None
+    return [json.loads(l) for l in lp.read_text().splitlines() if l.strip()] if lp and lp.exists() else []
+
+
+def render_gate(prop: dict, evs: list[dict]) -> None:
+    """What the human sees at the gate: the restated proposal, and each cited
+    evidence id resolved to the ledger line that produced it (Phase 9)."""
+    args = prop.get("arguments") or {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            args = {"raw": args}
+    print(f"  *** APPROVAL REQUIRED: {prop['name']}", flush=True)
+    for k in ("proposal_id", "service", "to_version", "expected_current"):
+        if k in args:
+            print(f"      {k:16} {args[k]}", flush=True)
+    eids = args.get("justification_eids") or []
+    entries = ledger_entries(engine_session_of(evs))
+    by_eid = {eid: en for en in entries for eid in en.get("eids", [])}
+    print(f"      justification   {eids}", flush=True)
+    for eid in eids:
+        en = by_eid.get(eid)
+        print(f"        {eid:4} {en['tool'] + ': ' + en['summary'][:110] if en else 'NOT ISSUED BY THE ENGINE IN THIS INVESTIGATION'}", flush=True)
+    for k, v in args.items():
+        if k not in ("proposal_id", "service", "to_version", "expected_current", "justification_eids"):
+            print(f"      {k:16} {v}", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--condition", required=True, help="bench/conditions/<name>.json")
@@ -137,7 +172,7 @@ def main() -> None:
             break
         thread, tcid = pend
         prop = proposal_of(evs, tcid)
-        print(f"  *** APPROVAL REQUIRED: {prop['name']} {prop['arguments']}", flush=True)
+        render_gate(prop, all_events)
         if a.approval == "ask":
             ans = input("  approve? [y/N] ").strip().lower()
             allow, reason = ans == "y", "Operator declined."
@@ -157,6 +192,7 @@ def main() -> None:
     new_entries = journal_after[len(journal_before):]
     versions_after = json.loads((ROOT / "data/deploy/current.json").read_text())
     rollbacks = [e for e in new_entries if e["kind"] == "rollback"]
+    journal_kinds = {k: sum(1 for e in new_entries if e["kind"] == k) for k in sorted({e["kind"] for e in new_entries})}
     totals = tf.usage_total(all_events)
     calls = tf.tool_calls(all_events)
 
@@ -181,6 +217,7 @@ def main() -> None:
             "rollbacks_executed": [{"service": e["service"], "to": e["version"], "from": e.get("from_version"),
                                     "deploy_id": e.get("deploy_id"), "eids": e.get("justification_eids", [])} for e in rollbacks],
             "journal_entries_added": new_entries,
+            "journal_kinds_added": journal_kinds,
             "versions_before": {k: v["version"] for k, v in versions_before.items()},
             "versions_after": {k: v["version"] for k, v in versions_after.items()},
             "error_rate_pre_run": pre_rate,
@@ -191,11 +228,17 @@ def main() -> None:
         "events": all_events,
     }
     # Ledger (Spyglass conditions): the engine writes ledger/<mcp-session-id>.jsonl.
-    engine_sid = next((s.get("session_id") for e in all_events if e.get("type") == "mcp.initialize"
-                       for s in e.get("mcp_servers", []) if s.get("name") == "spyglass-engine"), None)
+    engine_sid = engine_session_of(all_events)
     if engine_sid:
         lp = ROOT / "ledger" / f"{engine_sid}.jsonl"
-        entries = [json.loads(l) for l in lp.read_text().splitlines() if l.strip()] if lp.exists() else []
+        entries = ledger_entries(engine_sid)
+        # Verification (C11) is judged by the engine; the benchmark reads its verdict here, not the prose.
+        checks = [en for en in entries if en["tool"] == "verify_recovery"]
+        closing = [en for en in entries if en["tool"] == "verified_recovery"]
+        escal = [en for en in entries if en["tool"] == "escalation"]
+        result["verification"] = {"checks": len(checks), "closed": bool(closing), "escalated": bool(escal),
+                                  "verdict": (closing or escal or [{}])[0].get("summary"),
+                                  "last_check": checks[-1]["summary"] if checks else None}
         issued = sorted({eid for en in entries for eid in en.get("eids", [])}, key=lambda x: int(x[1:]))
         cited = sorted({m for m in re.findall(r"\bE\d+\b", final_text)}, key=lambda x: int(x[1:]))
         recheck = None
@@ -228,6 +271,9 @@ def main() -> None:
         lat = L["engine_latency_ms"]
         print(f"   ledger: {L['path']} | {L['entries']} entries, {L['eids_issued']} eids issued, {len(L['eids_cited_valid'])} cited in RCA "
               f"| engine latency p50 {sorted(lat)[len(lat)//2] if lat else 0:.2f} ms max {max(lat) if lat else 0:.2f} ms | re-check: {(L['recheck'] or {}).get('verdict','-')}")
+        V = result.get("verification") or {}
+        print(f"   verification (engine-judged): {V.get('checks', 0)} check(s); {'CLOSED' if V.get('closed') else 'ESCALATED' if V.get('escalated') else 'NOT CLOSED'} -- {V.get('verdict') or V.get('last_check') or 'no checks'}")
+    print(f"   journal kinds added: {m['journal_kinds_added']}")
     print(f"   result: {out_path.relative_to(ROOT)}")
     # The acceptance bar is "digests re-check": a mismatch is a loud failure,
     # after the result is written so the evidence of it is kept.

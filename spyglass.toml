@@ -157,3 +157,27 @@ separation_min_delta = 0.5    # |p_worst - p_best| >= this -> `separated`; below
 captured_path = "/checkout"
 service       = "payments"
 path          = "/charge"
+
+# Phase 9 -- post-action verification (README C11). The engine judges
+# recovery; the agent asks `verify_recovery(service, deploy_id)` every
+# `interval_secs` until the engine closes the incident (`checks_required`
+# consecutive clean checks -> a `verified_recovery` ledger entry) or tells
+# it to escalate (timeout, or the rate worsening). The incident is resolved
+# only on the closing path.
+[verify]
+interval_secs          = 15
+checks_required        = 2
+timeout_secs           = 300    # the spec's 5 minutes
+window_secs            = 60     # post-action window per check, ending at the safe watermark, never before the action
+baseline_secs          = 300    # pre-incident baseline: the 5 minutes before the reverted deploy
+incident_lookback_secs = 300    # used only when the journal cannot name the deploy the action reverted
+tolerance_abs          = 0.02   # clean = post rate <= max(baseline * ratio, baseline + abs): 2 points over a clean baseline (S1's pre_fault_max)
+tolerance_ratio        = 1.5
+min_requests           = 20     # fewer request events than this after the action -> "insufficient_data", not a verdict
+
+# Engine-side backstop against runaway agents (README, Safety Model). The
+# lead-level budget is the harness's iteration_limit; this is the floor
+# under it, keyed by investigation (MCP session), never by prompt.
+[limits]
+max_calls_per_investigation = 200
+max_calls_per_minute        = 60

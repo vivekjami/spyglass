@@ -13,6 +13,15 @@
 //! `request_id`, and it refuses to act if the world moved since the proposal
 //! (`expected_current`). The CLI (main.rs) and the MCP tool (`serve`) both
 //! call the functions here, so the gate wraps one tested implementation.
+//!
+//! Phase 9 hardening: the agent no longer supplies the idempotency key. It
+//! calls `propose` (non-mutating: records a `proposal` in the journal, mints
+//! a `proposal_id`, snapshots the current version and an expiry), then the
+//! gated `rollback` *consumes* that proposal by id (`execute`). The agent
+//! restates service / version / evidence at the gate so a human reads them
+//! there, and the deployer refuses if the restatement differs from what was
+//! minted. Expired proposals are refused: a gate the harness never times out
+//! still cannot execute a stale approval.
 
 use std::{
     collections::BTreeMap,
@@ -62,6 +71,12 @@ pub struct Entry {
     pub justification_eids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Proposals: the version the proposal was made against (the TOCTOU witness).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_current: Option<String>,
+    /// Proposals: RFC3339 instant after which the proposal can no longer be executed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -157,6 +172,8 @@ fn entry(n: u64, kind: &str, service: &str, actor: &str) -> Entry {
         request_id: None,
         justification_eids: vec![],
         note: None,
+        expected_current: None,
+        expires_at: None,
     }
 }
 
@@ -281,4 +298,255 @@ pub fn rollback(
     store.save_state(&state)?;
     store.append(&e)?;
     Ok((e, RollbackOutcome::Executed))
+}
+
+// ------------------------------------------------------------------ proposals (Phase 9)
+
+/// Default lifetime of a proposal. The harness's approval gate never expires
+/// on its own (Phase 9 finding), so this is the only clock on a pending
+/// approval: after it, the rollback is refused and must be re-proposed
+/// against the current state.
+pub const DEFAULT_PROPOSAL_TTL_SECS: i64 = 600;
+
+fn eid_ok(e: &str) -> bool {
+    e.len() > 1 && e.starts_with('E') && e[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// Record a rollback proposal: non-mutating (no routing change), journaled.
+/// Mints the idempotency key the gated `rollback` will consume, snapshots
+/// the version the proposal is made against, and stamps an expiry. Refuses
+/// proposals that would change nothing or cite no evidence.
+pub fn propose(
+    store: &Store,
+    service: &str,
+    to_version: &str,
+    justification_eids: Vec<String>,
+    actor: &str,
+    ttl_secs: i64,
+) -> Result<Entry> {
+    check_known(service, to_version)?;
+    let state = store.load_state()?;
+    let cur = state.get(service).cloned().context("service missing from state")?;
+    if cur.version == to_version {
+        bail!("{service} is already at {to_version}; nothing to roll back");
+    }
+    let mut eids: Vec<String> = justification_eids.into_iter().map(|e| e.trim().to_string()).filter(|e| !e.is_empty()).collect();
+    eids.sort();
+    eids.dedup();
+    if eids.is_empty() {
+        bail!("a proposal must cite at least one evidence id (E1, E2, ...)");
+    }
+    if let Some(bad) = eids.iter().find(|e| !eid_ok(e)) {
+        bail!("'{bad}' is not an evidence id (expected E<n>)");
+    }
+    let (n, _) = store.next_ids()?;
+    let mut e = entry(n, "proposal", service, actor);
+    e.version = Some(to_version.into());
+    e.from_version = Some(cur.version.clone());
+    e.expected_current = Some(cur.version);
+    e.request_id = Some(Uuid::new_v4());
+    e.justification_eids = eids;
+    e.expires_at = Some((Utc::now() + chrono::Duration::seconds(ttl_secs.max(1))).to_rfc3339_opts(SecondsFormat::Millis, true));
+    e.note = Some("proposal recorded; execution requires human approval of rollback(proposal_id)".into());
+    store.append(&e)?;
+    Ok(e)
+}
+
+/// What the agent restates at the gate. Every field must agree with the
+/// minted proposal -- the human approves what they can read, and the
+/// deployer guarantees that is what runs.
+#[derive(Debug, Clone, Default)]
+pub struct Restated {
+    pub service: String,
+    pub to_version: String,
+    pub expected_current: Option<String>,
+    pub justification_eids: Vec<String>,
+}
+
+/// Execute an approved proposal. Every refusal is journaled as `aborted`
+/// with the reason; a repeat of an executed proposal is a `noop`.
+pub fn execute(store: &Store, proposal_id: Uuid, restated: &Restated, actor: &str) -> Result<(Entry, RollbackOutcome)> {
+    let journal = store.read_journal()?;
+    let n = journal.len() as u64 + 1;
+    let refuse = |n: u64, service: &str, note: String| -> Result<(Entry, RollbackOutcome)> {
+        let mut e = entry(n, "aborted", service, actor);
+        e.request_id = Some(proposal_id);
+        e.version = Some(restated.to_version.clone());
+        e.justification_eids = restated.justification_eids.clone();
+        e.note = Some(note);
+        store.append(&e)?;
+        Ok((e, RollbackOutcome::Aborted))
+    };
+
+    // Idempotency first: an executed proposal re-sent is a recorded no-op,
+    // whatever else has changed since.
+    if let Some(orig) = journal.iter().find(|e| e.request_id == Some(proposal_id) && e.kind == "rollback") {
+        let mut e = entry(n, "noop", &orig.service, actor);
+        e.version = orig.version.clone();
+        e.request_id = Some(proposal_id);
+        e.justification_eids = orig.justification_eids.clone();
+        e.note = Some(format!("duplicate proposal_id; already executed as entry n={} deploy_id={}", orig.n, orig.deploy_id.clone().unwrap_or_default()));
+        store.append(&e)?;
+        return Ok((e, RollbackOutcome::Noop));
+    }
+    let Some(p) = journal.iter().find(|e| e.request_id == Some(proposal_id) && e.kind == "proposal") else {
+        return refuse(n, &restated.service, format!("unknown proposal_id {proposal_id}; call propose_rollback first"));
+    };
+    // The restatement must be the proposal.
+    let mut want = p.justification_eids.clone();
+    want.sort();
+    let mut got: Vec<String> = restated.justification_eids.iter().map(|e| e.trim().to_string()).collect();
+    got.sort();
+    got.dedup();
+    let mut diffs = Vec::new();
+    if restated.service != p.service {
+        diffs.push(format!("service {} != {}", restated.service, p.service));
+    }
+    if Some(restated.to_version.as_str()) != p.version.as_deref() {
+        diffs.push(format!("to_version {} != {}", restated.to_version, p.version.clone().unwrap_or_default()));
+    }
+    if let Some(ec) = &restated.expected_current {
+        if Some(ec.as_str()) != p.expected_current.as_deref() {
+            diffs.push(format!("expected_current {ec} != {}", p.expected_current.clone().unwrap_or_default()));
+        }
+    }
+    if got != want {
+        diffs.push(format!("justification_eids {got:?} != {want:?}"));
+    }
+    if !diffs.is_empty() {
+        return refuse(n, &p.service, format!("restated proposal differs from the minted one: {}; re-propose", diffs.join("; ")));
+    }
+    // Expiry.
+    if let Some(exp) = p.expires_at.as_deref().and_then(|s| s.parse::<chrono::DateTime<Utc>>().ok()) {
+        if Utc::now() > exp {
+            return refuse(n, &p.service, format!("proposal expired at {}; re-propose against the current state", p.expires_at.clone().unwrap_or_default()));
+        }
+    }
+    // TOCTOU + execution: the tested path, keyed by the proposal id.
+    rollback(store, &p.service, p.version.as_deref().unwrap_or_default(), proposal_id, p.expected_current.as_deref(), actor, p.justification_eids.clone())
+}
+
+pub fn find_proposal(store: &Store, proposal_id: Uuid) -> Result<Option<Entry>> {
+    Ok(store.read_journal()?.into_iter().find(|e| e.request_id == Some(proposal_id) && e.kind == "proposal"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh() -> (Store, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("spyglass-deployer-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(&dir);
+        init(&store, true).unwrap();
+        deploy(&store, "payments", "v2", "deploy-bot").unwrap(); // the fault
+        (store, dir)
+    }
+
+    fn restated(p: &Entry) -> Restated {
+        Restated {
+            service: p.service.clone(),
+            to_version: p.version.clone().unwrap(),
+            expected_current: p.expected_current.clone(),
+            justification_eids: p.justification_eids.clone(),
+        }
+    }
+
+    fn current(store: &Store) -> String {
+        store.load_state().unwrap()["payments"].version.clone()
+    }
+
+    #[test]
+    fn a_proposal_mints_the_key_and_snapshots_the_world() {
+        let (store, _d) = fresh();
+        let p = propose(&store, "payments", "v1", vec!["E3".into(), "E1".into(), "E3".into()], "agent", 600).unwrap();
+        assert_eq!(p.kind, "proposal");
+        assert!(p.request_id.is_some());
+        assert_eq!(p.expected_current.as_deref(), Some("v2"));
+        assert_eq!(p.justification_eids, vec!["E1", "E3"]);
+        assert!(p.deploy_id.is_none(), "a proposal is not a routing change");
+        assert_eq!(current(&store), "v2");
+        // ids stay deterministic: the proposal did not consume a D-n
+        let (_, next) = store.next_ids().unwrap();
+        assert_eq!(next, "D-2");
+    }
+
+    #[test]
+    fn proposals_that_change_nothing_or_cite_nothing_are_refused() {
+        let (store, _d) = fresh();
+        assert!(propose(&store, "payments", "v2", vec!["E1".into()], "agent", 600).unwrap_err().to_string().contains("already at v2"));
+        assert!(propose(&store, "payments", "v1", vec![], "agent", 600).unwrap_err().to_string().contains("at least one evidence id"));
+        assert!(propose(&store, "payments", "v1", vec!["not-an-eid".into()], "agent", 600).unwrap_err().to_string().contains("not an evidence id"));
+    }
+
+    #[test]
+    fn double_fire_is_one_rollback_and_one_recorded_noop() {
+        let (store, _d) = fresh();
+        let p = propose(&store, "payments", "v1", vec!["E1".into(), "E7".into(), "E8".into()], "agent", 600).unwrap();
+        let id = p.request_id.unwrap();
+        let (e1, o1) = execute(&store, id, &restated(&p), "agent").unwrap();
+        let (e2, o2) = execute(&store, id, &restated(&p), "agent").unwrap();
+        assert_eq!(o1, RollbackOutcome::Executed);
+        assert_eq!(e1.deploy_id.as_deref(), Some("D-2"));
+        assert_eq!(e1.request_id, Some(id));
+        assert_eq!(o2, RollbackOutcome::Noop);
+        assert!(e2.note.unwrap().contains("duplicate proposal_id"));
+        assert_eq!(current(&store), "v1");
+        let kinds: Vec<String> = store.read_journal().unwrap().iter().map(|e| e.kind.clone()).collect();
+        assert_eq!(kinds, vec!["init", "deploy", "proposal", "rollback", "noop"]);
+    }
+
+    #[test]
+    fn approve_after_manual_rollback_aborts_on_version_mismatch() {
+        let (store, _d) = fresh();
+        let p = propose(&store, "payments", "v1", vec!["E1".into()], "agent", 600).unwrap();
+        // An operator fixes it by hand while the approval is pending.
+        deploy(&store, "payments", "v1", "operator").unwrap();
+        let (e, o) = execute(&store, p.request_id.unwrap(), &restated(&p), "agent").unwrap();
+        assert_eq!(o, RollbackOutcome::Aborted);
+        assert!(e.note.unwrap().contains("version mismatch"));
+        assert_eq!(current(&store), "v1");
+    }
+
+    #[test]
+    fn an_expired_proposal_is_never_executed() {
+        let (store, _d) = fresh();
+        let mut p = propose(&store, "payments", "v1", vec!["E1".into()], "agent", 1).unwrap();
+        // Rewrite the expiry into the past rather than sleeping: the check is on the clock, not on a timer.
+        let past = (Utc::now() - chrono::Duration::seconds(5)).to_rfc3339_opts(SecondsFormat::Millis, true);
+        let text = fs::read_to_string(&store.journal_path).unwrap().replace(p.expires_at.as_deref().unwrap(), &past);
+        fs::write(&store.journal_path, text).unwrap();
+        p.expires_at = Some(past);
+        let (e, o) = execute(&store, p.request_id.unwrap(), &restated(&p), "agent").unwrap();
+        assert_eq!(o, RollbackOutcome::Aborted);
+        assert!(e.note.unwrap().contains("expired"));
+        assert_eq!(current(&store), "v2", "the world did not move");
+    }
+
+    #[test]
+    fn a_restatement_that_differs_from_the_proposal_is_refused() {
+        let (store, _d) = fresh();
+        let p = propose(&store, "payments", "v1", vec!["E1".into(), "E2".into()], "agent", 600).unwrap();
+        let mut r = restated(&p);
+        r.justification_eids = vec!["E9".into()];
+        let (e, o) = execute(&store, p.request_id.unwrap(), &r, "agent").unwrap();
+        assert_eq!(o, RollbackOutcome::Aborted);
+        assert!(e.note.clone().unwrap().contains("justification_eids"));
+        let mut r2 = restated(&p);
+        r2.to_version = "v2".into();
+        assert_eq!(execute(&store, p.request_id.unwrap(), &r2, "agent").unwrap().1, RollbackOutcome::Aborted);
+        assert_eq!(current(&store), "v2");
+        // the right restatement still works afterwards
+        assert_eq!(execute(&store, p.request_id.unwrap(), &restated(&p), "agent").unwrap().1, RollbackOutcome::Executed);
+    }
+
+    #[test]
+    fn an_unknown_proposal_id_is_refused_and_journaled() {
+        let (store, _d) = fresh();
+        let r = Restated { service: "payments".into(), to_version: "v1".into(), expected_current: None, justification_eids: vec![] };
+        let (e, o) = execute(&store, Uuid::new_v4(), &r, "agent").unwrap();
+        assert_eq!(o, RollbackOutcome::Aborted);
+        assert!(e.note.unwrap().contains("unknown proposal_id"));
+        assert_eq!(current(&store), "v2");
+    }
 }

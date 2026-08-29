@@ -72,6 +72,10 @@ s7-check *args:
 s8-check *args:
     python3 scripts/replay-check.py {{args}}
 
+# Phase 9 acceptance, live: double-fire = 1 rollback + 1 noop; approve-after-manual-rollback aborts; expired/restated proposals refused; engine closes only after 2 clean checks and escalates on worsening; budget backstop. Leaves payments at v1.
+s9-check *args:
+    python3 scripts/gate-check.py {{args}}
+
 # Validate every ground-truth.yaml against scenarios/SCHEMA.md.
 validate:
     python3 scripts/validate-ground-truth.py scenarios/*/ground-truth.yaml
