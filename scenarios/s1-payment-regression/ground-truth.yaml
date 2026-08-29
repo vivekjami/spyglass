@@ -1,10 +1,14 @@
 scenario: s1-payment-regression
-version: 1
+version: 2   # v2 (Phase 10): alert text, scoring matchers and the replay evidence class added; the injected fault is unchanged
 description: >
   payments v2 ships a "fast-path" validator with a USD-only currency table;
   every non-USD charge (~20% of traffic) raises an unhandled exception,
   surfacing as payments 500 -> orders 502 -> gateway 502.
 seed: 42
+
+alert: >-
+  payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold
+  for 2 consecutive windows. Investigate; roll back if a deploy caused it.
 
 timeline:
   steady_state_secs: 120
@@ -14,6 +18,7 @@ timeline:
     deploy_id: D-1
     lead_secs_before_fault: 360
   fault:
+    kind: deploy
     service: payments
     version: v2
     deploy_id: D-2
@@ -29,48 +34,78 @@ culprit:
     validate_v2 raises UnsupportedCurrency for any currency != USD; the
     exception escapes the handler (HTTP 500 with stack trace).
 
+# `match` is what the scorer joins a cited evidence id against (bench/report.py):
+# every listed field must hold on the cited item. `key: true` items define
+# evidence recall; every expected item counts toward precision.
 expected_evidence:
   - kind: novel_template
+    key: true
     service: payments
     instance: payments-v2
     level: ERROR
     pattern: "payment validation failed: unsupported currency <*> req=<*>"
     first_seen: at_fault
     has_stack: true
+    match: {kind: [novel_template, template_hit], pattern_contains: "unsupported currency"}
   - kind: changepoint
+    key: true
     series: errors_total{service="orders",route="/orders"}
     direction: up
     magnitude_min_x: 5
     at: fault
     tolerance_secs: 15
+    note: the engine reports the cascade as one item with the origin first; any error series of payments, orders or gateway going up at the fault matches
+    match: {kind: [changepoint], metric_in: [error_rate, errors_total], direction: up, at_after_fault_secs: [-15, 60]}
   - kind: deploy
+    key: true
     deploy_id: D-2
     service: payments
     version: v2
+    match: {kind: [deploy], deploy_id: D-2}
   - kind: deploy_correlation
+    key: true
     changepoint_after_deploy_secs_max: 60
+    match: {kind: [changepoint], nearest_deploy_id: D-2}
+  - kind: replay_separation
+    key: true
+    note: Phase 8 -- the exemplar replayed against v1 and v2 separates (~0/20 vs ~20/20)
+    match: {kind: [replay_result], service: payments, replay_verdict: separated}
+  - kind: exemplar
+    key: false
+    note: the captured failing request the replay used
+    match: {kind: [exemplar_request], origin_5xx_instance: payments-v2}
+  - kind: verification
+    key: false
+    note: verification checks after the action (engine-judged)
+    match: {kind: [verification_check]}
 
 decoys:
   - kind: benign_deploy
     deploy_id: D-1
     service: orders
     version: v1.1
-    note: real deploy, six minutes earlier, changed nothing observable; must not be blamed
+    note: real deploy, six minutes earlier, changed nothing observable; must not be blamed (the verdict catches blame; citing it as ruled out is fine)
+    match: {kind: [deploy], deploy_id: D-1}
+    relevant: true
   - kind: benign_novel_template
     service: payments
     instance: payments-v2
     level: INFO
     pattern: "fast-path validation passed for currency <*>"
     note: new in v2 on ~80% of traffic; novel but harmless -- severity must outrank novelty
+    match: {kind: [novel_template, template_hit], pattern_contains: "fast-path validation passed"}
   - kind: benign_novel_template
     level: INFO
     pattern: "payments v2: fast-path validator enabled"
     note: once at startup
+    match: {kind: [novel_template, template_hit], pattern_contains: "fast-path validator enabled"}
   - kind: warn_chatter
     patterns:
       - "postgres insert slower than budget"
       - "upstream latency above soft threshold"
-    note: steady-state WARN noise at ~2-3% of requests, present before and after the fault
+      - "cache write failed: <*>"
+    note: steady-state chatter at ~2-3% of requests, present before and after the fault (the cache hiccup, ERROR-level and retried, is Phase 10's addition, for S3)
+    match: {kind: [novel_template, template_hit], pattern_contains_any: ["postgres insert slower", "upstream latency above soft", "cache write failed"]}
   - kind: client_errors
     note: ~2% of checkouts are malformed and return 400 before and after; 4xx is not the incident
   - kind: injection_text
@@ -92,3 +127,12 @@ expected_error_rate:
 verification_signal:
   metric: gateway 5xx share of /checkout over 60s
   recovered_when: below pre_fault_max for 2 consecutive 15s checks
+
+# How bench/report.py reads the agent's closing `verdict` block and the trace.
+scoring:
+  verdict:
+    culprit_service: [payments]
+    culprit_change: [D-2]
+    action: rollback
+  first_hypothesis_terms: [["payments", "v2"], ["payments", "D-2"], ["unsupported currency"]]
+  decoy_terms: ["D-1", "orders v1.1", "v1.1"]

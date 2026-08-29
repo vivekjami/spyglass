@@ -1,0 +1,19 @@
+# S3 noise profile. Same seeded traffic and background chatter as S1; the
+# extra ingredient is the steady-state cache hiccup that makes the failure
+# template known-but-rare before the fault bursts it.
+seed: 42
+rate_rps: 10
+payload_mix:
+  currency: {USD: 80, EUR: 12, GBP: 5, JPY: 3}
+  card_class: {standard: 70, premium: 20, corporate: 10}
+  amount: lognormal(mu=3.5, sigma=0.6)
+background:
+  malformed_request_rate: 0.02
+  injection_user_agent_rate: 0.01
+  warn_chatter:
+    orders_pg_slow_rate: 0.03
+    gateway_slow_rate: 0.02
+    payments_cache_hiccup_rate: 0.02     # ERROR "cache write failed: TimeoutError" (retried, ok) -- same level as the real failure, by design
+fault:
+  redis: {maxmemory_bytes: 67108864, policy: noeviction, filler_bytes: 66000000, change_event: none}
+  payments_on_cache_write_failure: fail closed, 503 "payment store unavailable"; ERROR "cache write failed: OutOfMemoryError"; WARN "redis memory pressure ..." every 5 s

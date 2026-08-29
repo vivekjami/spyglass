@@ -299,13 +299,49 @@ This section is the honest part. Written as it happens.
   to synthesise from what the agent already has. The harness's
   `iteration_limit` sits above it; this is the floor.
 
-### Phase 10 onward ⏳
+### Phase 10 — the benchmark ✅
 
-## The benchmark ⏳
+Three more scenarios, a runner, a scorer, and the ablation. What the day
+taught:
+
+- **The interesting incidents are the ones without a smoking gun.** S1 has
+  a stack trace at the culprit; any competent agent finds it. So S2's
+  culprit emits *nothing new* — a config-only release (`orders v1.2`: the
+  fraud vendor's v2 API and a doubled timeout) that turns into a latency
+  cascade and edge timeouts, with the only novel ERROR template at the
+  wrong service. S3 has *no change event at all* — a 66 MB blob from
+  another tenant fills a `noeviction` redis and payments fails closed,
+  bursting a template it already logged rarely in steady state. S6 has a
+  cause that is *not in the telemetry* — an unobserved vendor degrades,
+  orders fails open silently, and the only evidence is a latency
+  changepoint plus a benign deploy six minutes earlier begging to be
+  rolled back.
+- **Every one of them reproduces to the request.** Two runs from clean
+  state, 0.0 points of drift on S2 (seeded traffic, deterministic noise,
+  fixed timelines).
+- **"Implemented as a `disable_tools` entry" was wrong.** The bundle
+  embeds the novelty miner's output, so hiding the tool leaves the
+  treatment in place. Ablation A1 became a second instance of the same
+  engine binary started with `--ablation no-novelty`: no `novel_templates`,
+  no template candidates in the bundle, `w_n = 0`, stamped on every
+  watermark.
+- **Score mechanically or not at all.** Both SOPs end with a fenced
+  `verdict` block (`culprit_service`, `culprit_change`, `action`,
+  `evidence_label`); the ground truth lists the accepted values; every
+  cited evidence id is resolved to the item the engine returned and
+  matched against pre-registered `match` maps. No LLM judge.
+- **The gate is simulated as approving** in the matrix, so a wrong
+  proposal executes and is counted as a wrong action — the conservative
+  reading.
+- **The model catalog exposes no prices.** The cost column reads `n/a`
+  until `bench/price-sheet.json` is filled from the provider's sheet;
+  tokens stand as the proxy rather than an invented dollar figure.
+
+## The benchmark ⏳ (numbers land with the report)
 
 *Populated by `bench/report.py` from committed run files. Method: same model,
 same harness, same information access, same action path; baseline vs.
-Spyglass vs. no-novelty ablation; S1–S3 × 3 repeats; n=3 is a hackathon
+Spyglass vs. no-novelty ablation; S1–S3 and S6 × 3 repeats; n=3 is a hackathon
 budget, not a study, and no significance is claimed.*
 
 ## Results, including anything negative ⏳

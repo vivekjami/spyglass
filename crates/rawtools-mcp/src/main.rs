@@ -79,12 +79,13 @@ fn services(log_dir: &PathBuf) -> Vec<Service> {
     };
     vec![
         mk("gateway", "public edge; POST /checkout", vec!["orders"], Some(port("GATEWAY_PORT", 8080))),
-        mk("orders", "persists orders; charges via payments", vec!["payments-v1 or payments-v2 (per current routing)", "postgres"], Some(port("ORDERS_PORT", 8081))),
+        mk("orders", "persists orders; scores each order with the fraudcheck vendor (synchronous); charges via payments", vec!["payments-v1 or payments-v2 (per current routing)", "postgres", "fraudcheck"], Some(port("ORDERS_PORT", 8081))),
         mk("payments-v1", "payments service, version v1", vec!["redis"], Some(port("PAYMENTS_V1_PORT", 8082))),
         mk("payments-v2", "payments service, version v2", vec!["redis"], Some(port("PAYMENTS_V2_PORT", 8083))),
         mk("loadgen", "synthetic traffic generator", vec!["gateway"], None),
         Service { name: "postgres".into(), role: "orders database", upstreams: vec![], log_file: None, metrics_url: None, base_url: None },
         Service { name: "redis".into(), role: "payments cache", upstreams: vec![], log_file: None, metrics_url: None, base_url: None },
+        Service { name: "fraudcheck".into(), role: "external fraud-scoring vendor (third party), called synchronously by orders before each charge; NOT observed: no logs, no metrics, no endpoint here", upstreams: vec![], log_file: None, metrics_url: None, base_url: None },
     ]
 }
 

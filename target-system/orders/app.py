@@ -1,8 +1,15 @@
-"""orders: persists an order, then charges it via payments.
+"""orders: persists an order, scores it with the fraud vendor, then charges it
+via payments.
 
 Routes to payments-v1 or payments-v2 per the deployer's current.json, read on
 every request -- so a deploy or rollback takes effect on the next order with
 no restart. That is what makes both payments versions "always on".
+
+orders' own version (also from current.json) selects its *configuration*:
+`v1.1` is S1's decoy (a rebuild, same config); `v1.2` is S2's config-only
+release that moves the fraud client to the vendor's v2 API and doubles its
+timeout. There is one orders instance and one code path; a config release
+is a file write, like every other deploy here.
 """
 from __future__ import annotations
 
@@ -24,6 +31,18 @@ PAYMENTS = {
     "v2": os.environ.get("PAYMENTS_V2_URL", "http://payments-v2:8082"),
 }
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://spyglass:spyglass@postgres:5432/spyglass")
+FRAUD_URL = os.environ.get("FRAUD_URL", "http://fraudcheck:8090")
+
+# Config-only releases of orders, keyed by the version the deployer routes
+# orders to. The fraud pre-check is synchronous and FAILS OPEN: a timeout or
+# an error is swallowed and the order proceeds. Nothing is logged about the
+# call -- the vendor integration was never instrumented. That is a realistic
+# observability gap, and scenarios S2 and S6 exist because of it.
+FRAUD_CONFIG = {
+    "v1":   {"endpoint": "/v1/score", "timeout_ms": 5000},
+    "v1.1": {"endpoint": "/v1/score", "timeout_ms": 5000},   # S1 decoy: same config, new build number
+    "v1.2": {"endpoint": "/v2/score", "timeout_ms": 10000},  # S2: vendor API v2 + timeout doubled (config only)
+}
 
 
 @asynccontextmanager
@@ -76,6 +95,16 @@ async def create_order(request: Request):
     if noise_roll(rid, "pg-slow") < 0.03:  # steady WARN chatter, part of the noise profile
         log.warning("postgres insert slower than budget",
                     extra={"latency_ms": round(pg_ms + 80 + 60 * noise_roll(rid, "pg-slow-amt"), 1)})
+
+    fcfg = FRAUD_CONFIG.get(current_deploy("orders")["version"], FRAUD_CONFIG["v1"])
+    try:
+        await request.app.state.client.post(
+            f"{FRAUD_URL}{fcfg['endpoint']}",
+            json={"customer": customer, "amount": amount, "currency": currency,
+                  "card_class": body.get("card_class", "standard")},
+            headers={"x-request-id": rid}, timeout=httpx.Timeout(fcfg["timeout_ms"] / 1000))
+    except httpx.HTTPError:
+        pass  # fail open, silently (see FRAUD_CONFIG)
 
     route = current_deploy("payments")
     ver = route["version"]

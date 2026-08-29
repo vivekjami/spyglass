@@ -384,6 +384,7 @@ pub fn freshness_watermark(engine: &Engine) -> Result<(ToolOutput, Value)> {
         "epoch": store.epoch,
         "engine_started": fmt_ts(engine.started),
         "caught_up": engine.caught_up.load(std::sync::atomic::Ordering::Relaxed),
+        "ablation": engine.cfg.ablation,
     });
     let summary = format!("freshness_watermark → newest log {} (lag {} ms), {} events, {} templates",
         newest.map(fmt_ts).unwrap_or_else(|| "none".into()), newest.map(|t| (now - t).num_milliseconds()).unwrap_or(-1), store.ingested, store.templates.len());
@@ -531,6 +532,10 @@ pub fn novelty_score(i: &NoveltyInput, cfg: &spyglass_core::NoveltyCfg) -> Novel
 pub fn novel_templates(engine: &Engine, a: &NoveltyArgs) -> Result<(ToolOutput, Value)> {
     let cfg = &engine.cfg;
     let ncfg = &cfg.novelty;
+    if !ncfg.enabled {
+        anyhow::bail!("novel_templates is disabled in this engine configuration (ablation: {}); use search_logs, detect_changepoints and error_delta",
+            cfg.ablation.as_deref().unwrap_or("no-novelty"));
+    }
     let store = engine.store.read().expect("store lock");
     let watermark = store.safe_log_ts().unwrap_or_else(Utc::now);
     let w = match a.window.given() {
@@ -676,7 +681,7 @@ mod novelty_tests {
     use super::*;
 
     fn cfg() -> spyglass_core::NoveltyCfg {
-        spyglass_core::NoveltyCfg { incident_window_secs: 300, baseline_secs: 900, warmup_secs: 30, min_baseline_secs: 60, burst_log2_scale: 6.0, severity_boost: 1.25, min_score: 0.2 }
+        spyglass_core::NoveltyCfg { enabled: true, incident_window_secs: 300, baseline_secs: 900, warmup_secs: 30, min_baseline_secs: 60, burst_log2_scale: 6.0, severity_boost: 1.25, min_score: 0.2 }
     }
     fn t(s: &str) -> DateTime<Utc> { s.parse().unwrap() }
     fn base() -> NoveltyInput {

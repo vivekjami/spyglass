@@ -37,6 +37,11 @@ struct Cli {
     config: PathBuf,
     #[arg(long, default_value_t = 8791)]
     port: u16,
+    /// Run as a benchmark ablation. `no-novelty`: novel_templates disabled, w_n = 0, no template
+    /// candidates in the bundle (ADR-008's "one-line ablation", as a server switch so the same
+    /// config file serves both instances). Stamped on every freshness_watermark.
+    #[arg(long, value_parser = ["no-novelty"])]
+    ablation: Option<String>,
 }
 
 #[derive(Clone)]
@@ -293,7 +298,18 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
-    let cfg = Config::load(&cli.config)?;
+    let mut cfg = Config::load(&cli.config)?;
+    if let Some(ab) = &cli.ablation {
+        // Only one ablation exists; the parser already refused anything else.
+        cfg.novelty.enabled = false;
+        cfg.ranking.w_n = 0.0;
+        cfg.paths.segment_dir = cfg.paths.segment_dir.with_file_name(format!(
+            "{}-{ab}",
+            cfg.paths.segment_dir.file_name().and_then(|x| x.to_str()).unwrap_or("segments")
+        ));
+        cfg.ablation = Some(ab.clone());
+        tracing::warn!("ABLATION {ab}: novel_templates disabled, w_n = 0, no template candidates in bundles; segments in {}", cfg.paths.segment_dir.display());
+    }
     let engine = Engine::new(cfg);
     engine.start();
     tracing::info!("engine started; tailing {} and {}", engine.cfg.paths.log_dir.display(), engine.cfg.paths.deploy_dir.display());

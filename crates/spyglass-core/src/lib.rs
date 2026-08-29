@@ -42,6 +42,14 @@ pub struct Config {
     #[serde(default)]
     pub limits: LimitsCfg,
     pub services: Vec<ServiceCfg>,
+    /// Set by the server's `--ablation` flag, never by the file: names the
+    /// ablation this engine instance runs under, stamped on the watermark.
+    #[serde(default)]
+    pub ablation: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// README C11. The engine judges recovery; the agent only asks.
@@ -157,6 +165,10 @@ pub struct DrainCfg {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct NoveltyCfg {
+    /// Ablation A1 (`--ablation no-novelty`): false disables `novel_templates` and drops
+    /// template candidates from the bundle. Config default: true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     pub incident_window_secs: i64,
     pub baseline_secs: i64,
     pub warmup_secs: i64,
