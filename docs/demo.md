@@ -12,7 +12,7 @@ as each phase lands. Recorded across Phases 2, 9 and 11.
 | 0:30–0:45 | The turn | one card: telemetry → evidence engine → shaped evidence → agent | The idea, once, in one breath |
 | 0:45–1:30 | Spyglass investigates | analysts fan out; `novel_templates` with `first_seen` and `engine_latency_ms`; changepoint +118s after D-77 | Evidence tools carrying the load |
 | 1:30–2:00 | Sandbox experiment | replay proportions v1 vs v2 | Correlation → causation; the intellectual peak |
-| 2:00–2:25 | Approval + rollback + verify | gate full-screen with cited eids → one human click → recovery curve | Control-and-safety, on camera |
+| 2:00–2:25 | Approval + rollback + verify | gate full-screen with cited eids (each resolved to its ledger line) → one human click → `verify_recovery` closes the incident | Control-and-safety, on camera |
 | 2:25–2:45 | The ledger | postmortem citing E1–E7; one `get_evidence(E3)` dereference | Auditability made concrete |
 | 2:45–3:00 | The numbers | baseline vs Spyglass table (measured values only) + repo end card | The claim settled by measurement |
 
@@ -121,6 +121,32 @@ agent still designs it. If a judge asks, ADR-010 has the whole story.
 Optional B-roll: `just s8-check` — the negative control (a request that
 succeeded, replayed the same way: `0/20 vs 0/20 → not_separated`). The tool
 can say no.
+### 2:00–2:25 — The gate and the close — Phase 9 ✅
+
+Three frames, all from one `just demo` run (or `--approval ask` for the
+filmed take, so the click is real):
+
+1. **The proposal.** `propose_rollback` returns `proposal_id`,
+   `expected_current: v2`, `expires_at`, the eids. Voiceover: *the agent
+   asks; the system mints the key.*
+2. **The gate, full screen.** The runner's rendering of the pending
+   `rollback`: `proposal_id`, `service payments`, `to_version v1`,
+   `expected_current v2`, and each justification eid resolved to the ledger
+   line that produced it — *E8: replay v2 20/20 failed*. One human `y`.
+   (In the TrueForge UI the same call sits in the approval card.) If a
+   second take is wanted: answer `n` — the deny reason reaches the agent
+   and the run ends report-only, no retry.
+3. **The close.** `verify_recovery` × 3: `insufficient_data` → `clean (1/2)`
+   → `recovered … CLOSED`, then the ledger tail showing `verified_recovery`.
+   Voiceover: *the agent never declares recovery; the engine does.*
+
+B-roll for the safety story (`just s9-check`, ~2 min, terminal only):
+double-fire → `executed D-n` then `noop: duplicate proposal_id`; operator
+fixes it by hand while the gate is pending → `aborted: version mismatch`;
+a one-second-TTL proposal → `aborted: proposal expired`; the fault
+re-introduced after a fix → `not_recovered`, `worsening`, `ESCALATED` — and
+the 61st call in a minute refused. Every line is a journal or ledger entry.
+
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
 
 ## Production rules

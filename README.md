@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–8 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–9 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -307,7 +307,7 @@ Walk-through of one incident, end to end (scenario S1, the demo scenario):
 4. **Fan-out.** The lead investigator spawns three subagents with explicit budgets (max tool calls / tokens each): the **log analyst** calls `novel_templates(window=incident)` and gets back the never-before-seen stack-trace template, first-seen timestamp, count, and affected service; the **metrics analyst** calls `detect_changepoints` and gets the error-rate step and latency shift with timestamps; the **change analyst** calls `deploy_events` and gets `payments v2 @ T-2min`. Every response is bounded (≤ configured items, ≤ configured bytes/item), carries evidence IDs, and reports engine latency. The ledger records each call.
 5. **Synthesis.** The lead correlates timestamps (template first-seen ≈ changepoint ≈ deploy + skew tolerance), forms the hypothesis "payments v2 causes the failures," and *explicitly labels it correlation*.
 6. **Causal check.** The lead calls `get_exemplar_request(error_template_id)` → a captured failing request (sanitized). It writes a small replay script and runs it **in the TrueForge sandbox**: N=20 replays against `payments:v1` and N=20 against `payments:v2` (both reachable as Compose services). Result: failure proportions per version. Correlation upgraded to experimental causal evidence — or, if proportions don't separate, the hypothesis is *rejected* and the investigation continues.
-7. **Approval.** The lead proposes `rollback(service=payments, to_version=v1, request_id=<uuid>)` with the evidence-cited justification. TrueForge renders the approval gate. A human clicks approve (or rejects, or the gate times out — see Safety).
+7. **Approval.** The lead proposes `rollback(service=payments, to_version=v1, request_id=<uuid>)` with the evidence-cited justification. TrueForge renders the approval gate. A human clicks approve (or rejects, or the gate times out — see Safety). *(Phase 9 as built: `propose_rollback` mints the key and snapshots the world; the gated `rollback(proposal_id, …)` restates it for the human; the proposal, not the gate, expires.)*
 8. **Action.** The deployer validates the request: idempotency key unseen? current version really v2? Then it rolls back and journals the event. Repeat/duplicate calls are logged no-ops.
 9. **Verification loop.** The lead re-queries `error_delta(pre=incident, post=now)` and `detect_changepoints` on a schedule until the error rate returns to baseline (or a timeout escalates to a human). Only then does it emit the postmortem.
 10. **Postmortem.** Timeline + root cause + action + verification, every claim citing `E1…En`. The ledger and the frozen scenario data make each citation re-checkable after the fact.
@@ -462,6 +462,8 @@ Hard bounds, enforced by the engine, never by prompt: ≤ `max_items` (default 2
 
 Remediation success is **never assumed**. After the deployer confirms the rollback, the agent enters a verification loop: every 15s (config), re-query `error_delta(pre_incident_window, last_60s)` and `detect_changepoints(recovery=true)`; check `freshness_watermark` first so recovery is judged on fresh data. Exit conditions: (a) error rate within tolerance of pre-incident baseline for 2 consecutive checks → close with a `verified_recovery` ledger entry; (b) timeout (default 5m) → **escalate to human, do not retry-storm** (partial rollback and confounded incidents land here by design); (c) rate worsens → escalate immediately. The incident is resolved only on path (a).
 
+**Phase 9 as built:** the loop is engine-judged. `verify_recovery(service, deploy_id)` resolves three windows from the journal — the pre-incident baseline (5 min before the deploy the action reverted), the incident (that deploy → the action), and the post window (the last 60 s of ingested data after the action, ending at the safe watermark) — and judges the 5xx share of request lines: clean = `post ≤ max(1.5 × baseline, baseline + 2 pt)`. Two consecutive clean checks close the incident and write `verified_recovery`; a post rate no better than the incident, a rise across two dirty checks, or five minutes without recovery writes `escalation` and is terminal; too few requests is "insufficient data", not a verdict. `detect_changepoints(baseline = the incident)` runs inside it and reports the recovery step when one has landed. The agent sleeps 15 s and asks again; it never declares recovery. Measured live: closed after two clean checks; with the fault re-introduced, `not_recovered` (2.8 %) then `worsening` (10.5 %) → escalated. `[verify]` in `spyglass.toml`.
+
 ---
 
 ## Evidence Model
@@ -508,6 +510,7 @@ Read-only against the world, with one stated exception: `replay_exemplar` sends 
 | `service_topology` | — | static edges from Compose config (v0) | derived-from-traces is Future / optional |
 | `get_exemplar_request` | template_id \| eid \| route+status \| event_id, window? | one sanitized captured request (method, path, header subset, capped body), its `chain` through the services, the 5xx `origin`, and whether it is replayable | the input for the causal check; deterministic (earliest captured match) |
 | `replay_exemplar` | exemplar (eid \| template_id \| req_id), service, versions?, n≤50 | per version: k/N failures, statuses, latency, distinct failure bodies; `comparison` {proportions, Δ, threshold, verdict `separated` \| `not_separated`, reading} | **the causal check** (C9); live routing untouched; its own traffic excluded from evidence; not deterministic (a live experiment) |
+| `verify_recovery` | service, deploy_id, services? | this check's `status` (insufficient_data \| clean \| recovered \| not_recovered \| worsening \| timeout \| escalated), the three resolved windows and their rates, the streak, `next`; closes the incident (a `verified_recovery` ledger entry) or escalates (an `escalation` entry) | **C11 as built (Phase 9)**: the engine judges recovery, the agent asks every 15 s; not deterministic (temporal) |
 | `build_evidence_bundle` | window, focus_service?, limit?, weights? | the bundle (C6): ranked, deduped, kind-diverse head, ≤ 8 KB, `coverage`, `relationships` by ref, `incident_t0` | the one-call investigation starter; SOP v4 opens with it |
 | `get_evidence` | eid | full underlying record | dereference for audits |
 | `freshness_watermark` | — | newest ts per source + lag_ms; `safe_log_ts` (every active source read past it — where windows end), `caught_up` (files fully read after a start) | **SOP requires checking before concluding** |
@@ -516,9 +519,10 @@ Read-only against the world, with one stated exception: `replay_exemplar` sends 
 
 | Tool | Inputs | Behavior |
 |---|---|---|
-| `rollback` | service, to_version, request_id (uuid), justification_eids[] | Validates idempotency key; verifies current version ≠ to_version and matches the version the proposal was made against (TOCTOU check); executes; journals; returns the journal entry. Duplicate `request_id` → recorded no-op. **Wired as approval-required in TrueForge config.** |
+| `propose_rollback` | service, to_version, justification_eids[] | **Phase 9.** Non-mutating: validates the target, snapshots the live version as `expected_current`, mints the `proposal_id` (v4 UUID — the model never supplies the idempotency key), stamps an expiry (600 s), journals a `proposal`. |
+| `rollback` | proposal_id, service, to_version, expected_current, justification_eids[] | Consumes the proposal. The restatement is what the approver reads at the gate and must equal the minted proposal; refused (journaled `aborted`, with the reason) if it differs, if the proposal expired, or if the live version is no longer `expected_current` (TOCTOU); a repeated `proposal_id` is a recorded `noop`; else executes, journals, returns the entry. **Wired as approval-required in TrueForge config.** |
 
-`deploy` exists in the deployer CLI for scenario setup but is **not** exposed to the agent. There is exactly one path by which the agent can change the world, and a human stands on it.
+`deploy` exists in the deployer CLI for scenario setup but is **not** exposed to the agent. There is exactly one path by which the agent can change the world, and a human stands on it. The harness's gate has no timeout of its own (Phase 9 finding); the proposal's expiry is the clock, enforced where the action happens. Acceptance, measured live (`just s9-check`): double-fire → one rollback + one no-op; approve-after-manual-rollback → `aborted: version mismatch`; expired → `aborted`; restated mismatch → `aborted`; the incident closes only on the engine's second consecutive clean check.
 
 ---
 
@@ -586,10 +590,10 @@ Logs are attacker-writable text that flows into the model's context. A malicious
 |---|---|
 | **Prompt injection via logs** | Above. |
 | **Stale evidence** | `freshness_watermark` is a first-class tool; the SOP requires checking it before any conclusion and attaches lag caveats to the RCA. Verification (C11) re-checks it before judging recovery. |
-| **TOCTOU** (world changes between approval request and execution) | Deployer re-validates current version at execution time against the version recorded in the proposal; mismatch → abort + re-propose. Approval gates expire (TrueForge/gate timeout); an expired approval is never executed. |
+| **TOCTOU** (world changes between approval request and execution) | Deployer re-validates current version at execution time against the version recorded in the proposal; mismatch → abort + re-propose. Approval gates expire (TrueForge/gate timeout); an expired approval is never executed. *Phase 9 as built:* the proposal records `expected_current` and `expires_at`; the harness gate does **not** expire on its own, so the deployer's expiry is the enforcement; tested live (`just s9-check`). |
 | **Partial rollback / partial remediation** | Verification loop judges *outcomes* (error rate), not intentions; non-recovery escalates to a human rather than retrying. |
 | **Hallucinated remediation** | Only one action exists, and it is human-gated; the SOP's report-only and refuse exits make "do nothing" a first-class success mode (S6 tests it). |
-| **Runaway agents / tool-call explosion** | Per-subagent budgets; lead-level budget; TrueForge session limits; engine-side per-client rate limit as backstop. Budget exhaustion → synthesize from partial evidence, labeled as partial. |
+| **Runaway agents / tool-call explosion** | Per-subagent budgets; lead-level budget; TrueForge session limits; engine-side per-client rate limit as backstop. Budget exhaustion → synthesize from partial evidence, labeled as partial. *Phase 9 as built:* `[limits]` — 200 calls per investigation, 60 per minute, refused by the engine with that instruction; the 61st call in a minute is refused (measured). |
 | **Excessive cost** | Tokens and cost are benchmark metrics, watched per run, not discovered at the end. |
 | **Data leakage** | Demo uses synthetic data only; exemplar sanitization strips auth headers and caps bodies regardless, because the pattern must survive contact with real data someday; secrets never enter the repo or the video (hackathon rule). |
 
@@ -658,7 +662,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 **ADR-010 — Sandbox verification before action.** *(Expanded and amended at Phase 8: [`docs/adr/ADR-010`](docs/adr/ADR-010-sandbox-verification-before-action.md) — the executor is the engine, one call lands both proportions as two eids.)*
 *Context:* correlation is cheap and wrong often enough to matter. *Decision:* deploy-shaped hypotheses must attempt an exemplar replay experiment (v_good vs v_bad) in the TrueForge sandbox before any action proposal. *Alternatives:* act on correlation + rollback-is-cheap — rejected: normalizes exactly the behavior the safety model exists to prevent, and forfeits the project's central demo moment; canary-in-prod — rejected: mutates live routing, out of scope. *Consequences:* needs sandbox→Compose networking (Phase 0 item; bisection fallback defined); adds ~30–60s to investigations — a price the benchmark reports rather than hides. *Reversal:* per-scenario the SOP may skip replay where no version pair exists (S3), downgrading claims honestly.
 
-**ADR-011 — Human approval for destructive actions.**
+**ADR-011 — Human approval for destructive actions.** *(Expanded at Phase 9: [`docs/adr/ADR-011`](docs/adr/ADR-011-human-approval-for-destructive-actions.md) — proposal minted by the system, restated at the gate, expiring, TOCTOU-checked; verification judged by the engine.)*
 *Context:* rollback in production terms is irreversible-enough; the hackathon judges control-and-safety explicitly; the author believes it regardless. *Decision:* the single mutating tool is approval-gated in the harness, idempotent, TOCTOU-checked, and verification-followed. *Alternatives:* full autonomy behind confidence thresholds — rejected: thresholds are exactly what miscalibrated models fake; allow-lists of "safe" mutations — rejected v0: one gate, one action, zero ambiguity. *Consequences:* MTTR includes human latency — measured and shown, because that *is* the honest number. *Reversal:* graduated autonomy is Future / optional and out of hackathon scope.
 
 **ADR-012 — The baseline uses the same model.**
@@ -682,7 +686,7 @@ Full ADRs live in `docs/adr/` (one file each, same numbering). Condensed here; e
 spyglass/                         ✓ built   ○ planned (phase)
 ├── README.md                     ✓ this document — the source of truth
 ├── LICENSE                       ✓ MIT
-├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | s7-check | s8-check | validate | demo | ledger-check   ○ bench (P10)
+├── justfile                      ✓ up | scenario s1 | watch | s1-check | s5-check | s7-check | s8-check | s9-check | validate | demo | ledger-check   ○ bench (P10)
 ├── docker-compose.yml            ✓ target system                                     ○ engine service (P3)
 ├── .env.example                  ✓ model key, host ports
 ├── spyglass.toml                 ✓ engine config: paths, bounds, windows, ingest, services
@@ -691,13 +695,13 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events, http_request (one request, like curl — the raw counterpart of the replay)
 │   ├── spyglass-core/            ✓ Event/DeployEvent/Window types, config, masking → template ids, canonical digests, ledger entries
 │   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + changepoints + ranking + bundles + tools + investigations/ledger
-│   ├── spyglass-mcp/             ✓ rmcp server: 11 tools (build_evidence_bundle first; novel_templates what, detect_changepoints when; get_exemplar_request → replay_exemplar the causal check), bounds, eids, digests, latency
+│   ├── spyglass-mcp/             ✓ rmcp server: 12 tools (build_evidence_bundle first; novel_templates what, detect_changepoints when; get_exemplar_request → replay_exemplar the causal check; verify_recovery the engine-judged close), bounds, eids, digests, latency, per-investigation budget
 │   └── spyglass-cli/             ○ inspect (later)
-├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
+├── deployer/                     ✓ Rust lib + CLI + `serve`: the write plane (propose_rollback mints the key; rollback consumes it, gated, expiring, TOCTOU-checked; current_versions); 7 acceptance unit tests
 ├── target-system/
 │   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
 │   └── Dockerfile, requirements.txt                   ✓
-├── agent/                        ✓ sop.md (Spyglass SOP v5: bundle-first, causal check before action), baseline-sop.md, subagents/ (analyst briefs; conditional fan-out)
+├── agent/                        ✓ sop.md (Spyglass SOP v6: bundle-first, causal check, propose → gated rollback → engine-judged verification), baseline-sop.md, subagents/ (analyst briefs; conditional fan-out)
 ├── scenarios/
 │   ├── SCHEMA.md                 ✓ ground-truth format
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
@@ -1071,7 +1075,7 @@ How a company like TrueFoundry **could** derive value from this capability class
 
 ### Optional — upside, in drop-order-reverse priority
 
-- [x] Changepoint detection (P5) · [x] Ranking + bundles (P6/P7) · [x] Causal replay (P8, on the engine — ADR-010) · [~] Subagents (briefs + conditional fan-out in SOP v5; not triggered on S1) · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
+- [x] Changepoint detection (P5) · [x] Ranking + bundles (P6/P7) · [x] Causal replay (P8, on the engine — ADR-010) · [x] Hardened gate + engine-judged verification (P9 — ADR-011) · [~] Subagents (briefs + conditional fan-out in SOP v6; not triggered on S1) · [ ] S6 refusal scenario scored · [ ] Ablation A1 · [ ] Injection-noise demonstration · [ ] S4/S5 · [ ] Model-B generalization cells · [ ] Session-resume demo beat
 
 (Yes: changepoints through replay are listed optional relative to the *mandatory floor* — the floor is what guarantees a qualifying submission; the SHOULD list is what makes it a winning one. Both lists are attacked in phase order.)
 
