@@ -19,9 +19,9 @@ import tf  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 MCP_SERVERS = {
     "spyglass-engine": ("http://localhost:8791/mcp",
-                        "Spyglass evidence engine (read-only): bounded, template-grouped, evidence-id-stamped tools -- build_evidence_bundle (the one-call starter), novel_templates, detect_changepoints, error_delta, deploy_events, search_logs, freshness_watermark, get_evidence, service_topology."),
+                        "Spyglass evidence engine: bounded, template-grouped, evidence-id-stamped tools -- build_evidence_bundle (the one-call starter), novel_templates, detect_changepoints, error_delta, deploy_events, search_logs, freshness_watermark, get_evidence, service_topology, and the causal check: get_exemplar_request + replay_exemplar."),
     "spyglass-rawtools": ("http://localhost:8793/mcp",
-                          "BASELINE tools: raw, unshaped telemetry access (tail_logs, grep_logs, get_metric, list_services, deploy_events)."),
+                          "BASELINE tools: raw, unshaped telemetry access (tail_logs, grep_logs, get_metric, list_services, deploy_events, http_request)."),
     "spyglass-deployer": ("http://localhost:8792/mcp",
                           "The ONE mutating action: rollback (approval-required), plus read-only current_versions."),
 }

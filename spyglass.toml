@@ -48,6 +48,7 @@ has_log = true
 [[services]]
 name = "payments-v1"
 service = "payments"
+version = "v1"                      # always-on version instance (ADR-017): a replay target
 role = "payments service, version v1"
 upstreams = ["redis"]
 port_env = "PAYMENTS_V1_PORT"
@@ -57,6 +58,7 @@ has_log = true
 [[services]]
 name = "payments-v2"
 service = "payments"
+version = "v2"
 role = "payments service, version v2"
 upstreams = ["redis"]
 port_env = "PAYMENTS_V2_PORT"
@@ -134,3 +136,24 @@ cascade_secs         = 2.0    # error facts on connected services within this of
 max_bytes            = 8192   # the whole bundle, serialised; items are added in rank order until the budget is spent
 incident_window_secs = 300    # default window: the last 5 minutes of ingested data
 baseline_secs        = 900    # novelty baseline: the 15 minutes before the window
+
+# Phase 8 -- the causal check (README C9, ADR-010). A captured request is
+# replayed N times against each always-on version of the suspected service,
+# straight to the instances' published ports (live routing untouched); the
+# replay's own log lines carry `replay-*` request ids and are dropped at
+# ingest, so the experiment never becomes evidence of itself.
+[replay]
+default_n            = 20     # replays per version when the call does not say (the spec's N)
+max_n                = 50     # hard cap per version
+timeout_ms           = 3000   # per request; a timeout counts as a failure and is reported as one
+body_cap             = 2048   # sanitized body cap, bytes (the gateway already caps at 1 kB)
+separation_min_delta = 0.5    # |p_worst - p_best| >= this -> `separated`; below -> `not_separated`, with a reading that says which way
+
+# Where a captured edge request is replayed for a given service: the body the
+# client sent to /checkout is what orders forwards to /charge, so it can be
+# replayed against payments directly. A service with no route here cannot be
+# replayed, and the exemplar says so.
+[[replay.routes]]
+captured_path = "/checkout"
+service       = "payments"
+path          = "/charge"

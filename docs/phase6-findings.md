@@ -1,7 +1,7 @@
 # Phase 6 — Evidence ranking: build record
 
 **Objective (spec):** one ranked list across evidence kinds.
-**Built:** 2026-08-29, 14:30–16:30 IST (09:00–11:00 UTC), together with
+**Built:** 2026-08-29, 13:50–15:00 IST (08:20–09:30 UTC; run files 09:20–09:29 UTC), together with
 Phase 7 — the ranker has no surface of its own; the bundle is the list ·
 **PR:** #7
 **Acceptance bar (spec):** on S1 the top 3 items are the deploy, the

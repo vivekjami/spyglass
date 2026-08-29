@@ -94,8 +94,14 @@ fn log_tailer(engine: Arc<Engine>) {
                 Some(lines) => {
                     let mut parsed = Vec::with_capacity(lines.len());
                     let mut bad = 0u64;
+                    let mut replayed = 0u64;
                     for (lineno, raw) in lines {
                         match Event::parse(&raw, &instance, format!("{instance}:{lineno}"), RAW_CAP) {
+                            // The engine's own replay traffic (README C9) is
+                            // tagged by request id; it is an experiment, not
+                            // evidence, and must not move a count, a rate, or
+                            // a watermark. Counted, never stored.
+                            Some(e) if e.req_id.as_deref().is_some_and(|r| r.starts_with(crate::replay::REQ_ID_PREFIX)) => replayed += 1,
                             Some(e) => {
                                 append_segment(&cfg.paths.segment_dir, &instance, e.ts, &raw);
                                 parsed.push(e);
@@ -108,6 +114,7 @@ fn log_tailer(engine: Arc<Engine>) {
                         s.append(e);
                     }
                     s.malformed += bad;
+                    s.replay_lines_excluded += replayed;
                 }
             }
         }

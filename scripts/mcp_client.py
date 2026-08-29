@@ -35,7 +35,10 @@ def call(sid: str, name: str, args: dict, url: str = ENGINE) -> dict:
     _, raw = _post({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                     "params": {"name": name, "arguments": args}}, sid, url=url)
     data = [json.loads(l[6:]) for l in raw.splitlines() if l.startswith("data: ") and l[6:].strip()]
-    res = data[-1]["result"]
+    msg = data[-1]
+    if "error" in msg:  # a JSON-RPC error: the tool refused the arguments
+        raise RuntimeError(f"{name}: {msg['error'].get('message', msg['error'])}"[:400])
+    res = msg["result"]
     if res.get("isError"):
         raise RuntimeError(res["content"][0]["text"][:400])
     return json.loads(res["content"][0]["text"])

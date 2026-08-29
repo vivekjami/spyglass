@@ -37,7 +37,7 @@ scenario name:
     just up
     bash scenarios/{{name}}-*/inject.sh
 
-# Start the MCP servers the agents use: deployer (rollback, :8792) and rawtools (baseline, :8793).
+# Start the MCP servers the agents use: engine (evidence plane, :8791), deployer (rollback, :8792), rawtools (baseline, :8793).
 mcp-up:
     scripts/mcp.sh start
 
@@ -68,6 +68,10 @@ s5-check *args:
 s7-check *args:
     python3 scripts/bundle-check.py {{args}}
 
+# Phase 8 acceptance on the latest S1 run: sanitized exemplar, replay v1 ~0/20 vs v2 ~19-20/20 (measured), ledger entries, negative control, no leakage into evidence.
+s8-check *args:
+    python3 scripts/replay-check.py {{args}}
+
 # Validate every ground-truth.yaml against scenarios/SCHEMA.md.
 validate:
     python3 scripts/validate-ground-truth.py scenarios/*/ground-truth.yaml
@@ -75,7 +79,7 @@ validate:
 logs svc:
     docker compose logs -f --no-log-prefix {{svc}}
 
-# THE loop: fresh S1 incident -> Spyglass agent investigates -> gated rollback -> verified recovery -> ledger re-check.
+# THE loop: fresh S1 incident -> Spyglass agent investigates -> causal replay -> gated rollback -> verified recovery -> ledger re-check.
 # Approval is asked for interactively unless DEMO_APPROVAL=allow (unattended).
 demo:
     just mcp-up

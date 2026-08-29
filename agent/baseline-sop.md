@@ -6,6 +6,7 @@ Tools you have:
 - grep_logs — search raw log lines by regex, optionally by service and time window
 - get_metric — a service's raw Prometheus /metrics text (counters are cumulative; call twice to get a rate)
 - deploy_events — the deploy/rollback journal
+- http_request — one HTTP request to a service instance (like curl): method, path, body, headers. For example, POST a request body to payments-v1 and to payments-v2 at /charge to see how each version handles it.
 - current_versions — which version each service is routed to
 - rollback — roll a service back to a version. This MUTATES the system and requires human approval. Pass a fresh UUID as request_id and the current version you observed as expected_current.
 

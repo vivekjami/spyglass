@@ -27,7 +27,7 @@ One Docker image (`Dockerfile`), five instances selected by Compose `command`.
 
 | Always | On request completion | On upstream calls | On exceptions | Gateway capture |
 |---|---|---|---|---|
-| `ts service instance version level req_id msg` | `route status latency_ms deploy_id` | `upstream upstream_version` | `stack` (≤ 2 KB) | `kind=request_capture method path headers body` |
+| `ts service instance version level req_id msg` | `route status latency_ms deploy_id` (+ `replay=<experiment>` when the request was the engine's causal-check replay) | `upstream upstream_version` | `stack` (≤ 2 KB) | `kind=request_capture method path headers body` |
 
 **Metrics** — Prometheus text at `/metrics` on every service:
 `requests_total{service,route,status}` · `errors_total{service,route}` (status ≥ 500) ·

@@ -20,6 +20,7 @@ like one.
 | [007](ADR-007-changepoints-via-rolling-zscore.md) | Changepoints via a guarded rolling z-score first | Confronted in Phase 5 — detector built; series source, guard length and `at` precision decided on evidence |
 | [008](ADR-008-evidence-ranking-linear-model.md) | Evidence ranking as a hand-weighted linear model | Confronted in Phase 6 — scorer built; what the v0 weights do and do not order on S1, measured |
 | [009](ADR-009-evidence-ledger.md) | An evidence ledger, not just an RCA | Confronted in Phase 3 — ledger writer built |
+| [010](ADR-010-sandbox-verification-before-action.md) | A controlled replay before any action | Confronted in Phase 8 — built on the engine, not in the sandbox (Phase 0 F9); amended, not reversed |
 | [015](ADR-015-scenario-corpus-and-bench-are-durable.md) | Scenario corpus and bench harness are durable artifacts | Confronted in Phase 1 — `scenarios/` built |
 | [016](ADR-016-harness-context-management-pinning.md) | Pin harness context-management flags | **New**, forced by a Phase 0 discovery (F7) |
 | [017](ADR-017-routing-by-file-versions-always-on.md) | A deploy is a file write; every version always on | **New**, Phase 1 design decision |
@@ -32,7 +33,6 @@ now would be backfilling in advance.
 
 | ADR | Decision | Expanded at |
 |---|---|---|
-| 010 | Sandbox verification before action | Phase 8 |
 | 011 | Human approval for destructive actions | Phase 9 |
 | 012 | The baseline uses the same model | Phase 2 |
 | 013 | No custom frontend initially | Phase 11 |

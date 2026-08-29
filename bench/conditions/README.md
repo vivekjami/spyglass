@@ -33,7 +33,8 @@ asymmetry here invalidates the result. Checked per condition file:
 | Topology | `list_services` (from the compose layout) | `service_topology` |
 | All of the above, once | — (the baseline composes its own picture from the raw tools) | `build_evidence_bundle` (the three sources above, deduped, ranked, bounded to 8 kB; the same facts, no new access) |
 | Routing state | `current_versions` | `current_versions` |
-| Captured requests | in the gateway log (`kind=request_capture`), via grep | `get_exemplar_request` |
+| Captured requests | in the gateway log (`kind=request_capture`), via grep | `get_exemplar_request` (one, sanitized, with its chain through the services) |
+| The causal check (Phase 8) | `http_request` — one request per call to any instance's published port, any body; the agent scripts the v1-vs-v2 comparison itself if it thinks of it, and its own requests land in the raw logs it reads | `replay_exemplar` — N per version, proportions side by side, a stated threshold and verdict; the engine keeps the experiment out of the evidence |
 
 The baseline's tools have limits because real tools do (`tail -n`, `grep |
 head`); they are generous and every truncated response states the total, so

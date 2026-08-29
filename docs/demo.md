@@ -89,10 +89,38 @@ read the number off the screen, never type it), the head — template, changepoi
 deploy — with `score` and `factors` on each, and `relationships` showing
 `D-2 -[precedes_within_120s +0.6 s]->` the template and the changepoint.
 
-Missing until its phase lands: the sandbox experiment (P8 — 1:30–2:00 stays
-unfilmed until then).
+**The causal-check frames (1:30–2:00) ✅ available (Phase 8).** See below.
 
-### 1:30–2:00 — Sandbox experiment — Phase 8
+### 1:30–2:00 — The experiment — Phase 8 ✅
+
+Two tool calls in the TrueForge session, both visible as rendered tool
+results:
+
+1. `get_exemplar_request(eid = <the top ERROR template>)` — hold on the
+   sanitized request (`POST /checkout`, body with `"currency":"EUR"`), the
+   `chain` (payments-v2 500 with a stack → orders 502 → gateway 502) and
+   `outcome.origin_5xx: payments-v2`. Voiceover: *the request a real client
+   sent, eighteen milliseconds before v2 raised.*
+2. `replay_exemplar(exemplar = <that eid>, service = payments, versions = [v1, v2], n = 20)`
+   — hold on `comparison`: `{"v1": "0/20", "v2": "20/20"}`, `Δ 1.0`,
+   `verdict: separated`, and the `reading` line ("…causal evidence for THIS
+   failure mode, not proof it is the only one; raw proportions at N=20, no
+   p-value claimed"). Then the two evidence ids in `meta.eids` and the
+   `side_effects` line: the experiment's own traffic was excluded from the
+   evidence.
+
+Then the agent's postmortem line that cites them: *Root cause (CAUSAL) … [E4,
+E5, E6]*. Read the numbers off the screen, never type them; a second run
+may say 19/20 — say what it says.
+
+Why the executor is the engine and not the sandbox (one sentence, honest):
+the harness sandbox is network-isolated by design and cannot reach the
+Compose stack (Phase 0), so the experiment runs on the evidence plane; the
+agent still designs it. If a judge asks, ADR-010 has the whole story.
+
+Optional B-roll: `just s8-check` — the negative control (a request that
+succeeded, replayed the same way: `0/20 vs 0/20 → not_separated`). The tool
+can say no.
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
 
 ## Production rules
