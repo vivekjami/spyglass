@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phase 0 and Phase 1 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–2 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -677,6 +677,7 @@ spyglass/                         ✓ built   ○ planned (phase)
 ├── Cargo.toml                    ✓ workspace
 ├── crates/
 │   ├── phase0-probe/             ✓ throwaway rmcp server that validated the MCP seam (deleted at P3)
+│   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events
 │   ├── spyglass-core/            ○ Event/Template/Changepoint/Evidence types, config, ids, digests (P3)
 │   ├── spyglass-ingest/          ○ log tailer, normalizer, metrics scraper, segments (P3)
 │   ├── spyglass-index/           ○ template index, text index, metric rings (P3)
@@ -684,16 +685,19 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── spyglass-rank/            ○ scoring, dedupe, bundles (P6/P7)
 │   ├── spyglass-mcp/             ○ rmcp server: read tools, bounds, eids, digests (P3)
 │   └── spyglass-cli/             ○ spyglass serve | ingest --replay | inspect (P3)
-├── deployer/                     ✓ Rust CLI: init/deploy/rollback/current/journal; idempotent, TOCTOU-checked   ○ MCP wrapper (P3)
+├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
 ├── target-system/
 │   ├── common/ gateway/ orders/ payments/ loadgen/   ✓ FastAPI services, one image; payments v1 & v2 always on
 │   └── Dockerfile, requirements.txt                   ✓
-├── agent/                        ○ sop.md, analyst briefs, TrueForge agent manifests (P3)
+├── agent/                        ✓ baseline-sop.md                                    ○ sop.md + analyst briefs (P3)
 ├── scenarios/
 │   ├── SCHEMA.md                 ✓ ground-truth format
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
 │   └── s2 … s6                   ○ (P10)
-├── bench/                        ○ runner, conditions, results, report.py (P10)
+├── bench/
+│   ├── conditions/               ✓ baseline.json + README (fairness checklist, info-access mapping)   ○ spyglass.json (P3), ablation (P10)
+│   ├── results/                  ✓ one JSON per investigation: metrics + full event trace
+│   └── report.py                 ○ aggregates results → docs/benchmark.md tables (P10)
 ├── ledger/                       ○ per-incident JSONL (P3)
 ├── docs/
 │   ├── README.md motivation.md architecture.md progress.md     ✓
@@ -701,7 +705,7 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── safety.md benchmark.md demo.md                           ✓ scaffolds, filled by their phases
 │   ├── adr/                      ✓ 001 002 003 015 016 017 in full; the rest indexed, expanded when confronted
 │   └── blog/draft.md             ✓ grown incrementally
-├── scripts/                      ✓ env, no-root installers, trueforge.sh, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
+├── scripts/                      ✓ env, no-root installers, trueforge.sh, mcp.sh, tf-setup.py, investigate.py, tf.py, watch.py, s1-curve.py, validate-ground-truth.py
 ├── data/                         · runtime only, gitignored: logs, deploy state, scenario run snapshots
 └── .github/workflows/ci.yml      ○ fmt, clippy, tests, s1 smoke (P11)
 ```

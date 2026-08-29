@@ -46,4 +46,13 @@ The harness emits `tool.approval_required` and resumes on `user.tool_approval`
 with `{"status":"allow"}` or `{"status":"deny","reason":"..."}`. Deny reasons
 are surfaced to the agent.
 
-Live gating test, timeout behaviour, and TOCTOU handling: **pending** (Phase 9).
+**As built (Phase 2):** `deployer serve` is a separate MCP server (:8792) from
+anything that reads telemetry. It exposes `rollback(service, to_version,
+request_id, expected_current?, justification_eids?)` and read-only
+`current_versions`; `deploy` is deliberately not there. Every condition's agent
+manifest lists it with `require_approval_for_tools: ["rollback"]`, and the CLI
+and the MCP tool call the same library function, so the idempotency and TOCTOU
+behaviour exercised in Phase 1 is the behaviour behind the gate.
+
+Gate timeout behaviour and the post-action verification loop: **pending**
+(Phase 9).

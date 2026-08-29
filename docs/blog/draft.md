@@ -99,7 +99,26 @@ This section is the honest part. Written as it happens.
   novelty ranker that keys on "new" alone will rank the decoy first. That is
   the point.
 
-### Phase 2 onward ⏳
+### Phase 2 — the control group
+
+- **`pgrep -f` matches the shell that runs it.** `just mcp-up` reported the
+  MCP servers as already running and started nothing; its liveness check
+  matched the recipe's own command line. The Phase 0 `pkill -f trueforge`
+  lesson, learned twice. Liveness is now by listening port, everywhere.
+- **Gemini rejects `Option<Vec<T>>`.** schemars emits `anyOf: [array, null]`
+  for an optional list; Gemini's function-declaration validator wants
+  `items` at the top level and fails the whole request — every tool, not
+  just the offending one — before the first model call. A `Vec<T>` with a
+  serde default is what an "optional list" has to look like. The failed run
+  is committed in `bench/results/` like any other: a harness error is a
+  result too.
+- **The baseline's tools are honest tools.** A `tail`, a `grep`, a `curl
+  /metrics`, a `cat journal` — with generous caps, and every truncated
+  response starting with *"2 of 11,812 matching lines"* so the agent can
+  page. If the control group finds the root cause fast, that is a finding,
+  and it gets reported.
+
+### Phase 3 onward ⏳
 
 ## The benchmark ⏳
 
