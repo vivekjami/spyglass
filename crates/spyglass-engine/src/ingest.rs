@@ -77,16 +77,30 @@ fn log_tailer(engine: Arc<Engine>) {
     let mut cursors: HashMap<PathBuf, Cursor> = HashMap::new();
     loop {
         let mut files: Vec<PathBuf> = fs::read_dir(&cfg.paths.log_dir)
-            .map(|rd| rd.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "jsonl")).collect())
+            .map(|rd| {
+                rd.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+                    .collect()
+            })
             .unwrap_or_default();
         files.sort();
         let mut reset = false;
         for path in &files {
-            let instance = path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
-            let cur = cursors.entry(path.clone()).or_insert(Cursor { offset: 0, lineno: 0 });
+            let instance = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let cur = cursors.entry(path.clone()).or_insert(Cursor {
+                offset: 0,
+                lineno: 0,
+            });
             match read_new_lines(path, cur) {
                 None => {
-                    tracing::warn!("{} shrank; stack reset -> clearing store (new epoch)", path.display());
+                    tracing::warn!(
+                        "{} shrank; stack reset -> clearing store (new epoch)",
+                        path.display()
+                    );
                     reset = true;
                     break;
                 }
@@ -96,12 +110,19 @@ fn log_tailer(engine: Arc<Engine>) {
                     let mut bad = 0u64;
                     let mut replayed = 0u64;
                     for (lineno, raw) in lines {
-                        match Event::parse(&raw, &instance, format!("{instance}:{lineno}"), RAW_CAP) {
+                        match Event::parse(&raw, &instance, format!("{instance}:{lineno}"), RAW_CAP)
+                        {
                             // The engine's own replay traffic (README C9) is
                             // tagged by request id; it is an experiment, not
                             // evidence, and must not move a count, a rate, or
                             // a watermark. Counted, never stored.
-                            Some(e) if e.req_id.as_deref().is_some_and(|r| r.starts_with(crate::replay::REQ_ID_PREFIX)) => replayed += 1,
+                            Some(e)
+                                if e.req_id.as_deref().is_some_and(|r| {
+                                    r.starts_with(crate::replay::REQ_ID_PREFIX)
+                                }) =>
+                            {
+                                replayed += 1
+                            }
                             Some(e) => {
                                 append_segment(&cfg.paths.segment_dir, &instance, e.ts, &raw);
                                 parsed.push(e);
@@ -120,33 +141,46 @@ fn log_tailer(engine: Arc<Engine>) {
         }
         if reset {
             engine.store.write().expect("store lock").reset();
-            engine.caught_up.store(false, std::sync::atomic::Ordering::Relaxed);
+            engine
+                .caught_up
+                .store(false, std::sync::atomic::Ordering::Relaxed);
             cursors.clear();
             continue;
         }
         // Every file has been read to its end once: from here on, lines are live.
-        engine.caught_up.store(true, std::sync::atomic::Ordering::Relaxed);
+        engine
+            .caught_up
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         thread::sleep(Duration::from_millis(cfg.ingest.poll_ms));
     }
 }
 
 fn journal_tailer(engine: Arc<Engine>) {
     let path = engine.cfg.paths.deploy_dir.join("journal.jsonl");
-    let mut cur = Cursor { offset: 0, lineno: 0 };
+    let mut cur = Cursor {
+        offset: 0,
+        lineno: 0,
+    };
     loop {
         match read_new_lines(&path, &mut cur) {
             None => {
                 // `deployer init --reset` rotates the journal: start over.
                 let mut s = engine.store.write().expect("store lock");
                 s.deploys.clear();
-                cur = Cursor { offset: 0, lineno: 0 };
+                cur = Cursor {
+                    offset: 0,
+                    lineno: 0,
+                };
             }
             Some(lines) => {
                 if !lines.is_empty() {
                     let mut s = engine.store.write().expect("store lock");
                     for (_, raw) in lines {
                         if let Ok(d) = serde_json::from_str::<DeployEvent>(&raw) {
-                            s.watermarks.entry("journal".into()).and_modify(|w| *w = (*w).max(d.ts)).or_insert(d.ts);
+                            s.watermarks
+                                .entry("journal".into())
+                                .and_modify(|w| *w = (*w).max(d.ts))
+                                .or_insert(d.ts);
                             s.deploys.push(d);
                         }
                     }
@@ -157,11 +191,20 @@ fn journal_tailer(engine: Arc<Engine>) {
     }
 }
 
-const KEEP: &[&str] = &["requests_total", "errors_total", "upstream_requests_total", "latency_ms_count", "latency_ms_sum"];
+const KEEP: &[&str] = &[
+    "requests_total",
+    "errors_total",
+    "upstream_requests_total",
+    "latency_ms_count",
+    "latency_ms_sum",
+];
 
 async fn metrics_scraper(engine: Arc<Engine>) {
     let cfg = engine.cfg.clone();
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(2)).build().expect("http client");
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .expect("http client");
     let targets: Vec<(String, String)> = cfg
         .services
         .iter()
@@ -170,14 +213,20 @@ async fn metrics_scraper(engine: Arc<Engine>) {
     loop {
         let now = Utc::now();
         for (instance, url) in &targets {
-            let Ok(resp) = client.get(url).send().await else { continue };
-            let Ok(text) = resp.text().await else { continue };
+            let Ok(resp) = client.get(url).send().await else {
+                continue;
+            };
+            let Ok(text) = resp.text().await else {
+                continue;
+            };
             let mut s = engine.store.write().expect("store lock");
             for line in text.lines() {
                 if line.starts_with('#') {
                     continue;
                 }
-                let Some((lhs, val)) = line.rsplit_once(' ') else { continue };
+                let Some((lhs, val)) = line.rsplit_once(' ') else {
+                    continue;
+                };
                 let name = lhs.split('{').next().unwrap_or("");
                 if !KEEP.contains(&name) {
                     continue;
@@ -198,8 +247,14 @@ async fn metrics_scraper(engine: Arc<Engine>) {
 
 pub fn spawn(engine: Arc<Engine>) {
     let e1 = engine.clone();
-    thread::Builder::new().name("log-tailer".into()).spawn(move || log_tailer(e1)).expect("spawn tailer");
+    thread::Builder::new()
+        .name("log-tailer".into())
+        .spawn(move || log_tailer(e1))
+        .expect("spawn tailer");
     let e2 = engine.clone();
-    thread::Builder::new().name("journal-tailer".into()).spawn(move || journal_tailer(e2)).expect("spawn journal");
+    thread::Builder::new()
+        .name("journal-tailer".into())
+        .spawn(move || journal_tailer(e2))
+        .expect("spawn journal");
     tokio::spawn(metrics_scraper(engine));
 }

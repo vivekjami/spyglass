@@ -76,7 +76,17 @@ pub struct VerifyCfg {
 
 impl Default for VerifyCfg {
     fn default() -> Self {
-        Self { interval_secs: 15, checks_required: 2, timeout_secs: 300, window_secs: 60, baseline_secs: 300, incident_lookback_secs: 300, tolerance_abs: 0.02, tolerance_ratio: 1.5, min_requests: 20 }
+        Self {
+            interval_secs: 15,
+            checks_required: 2,
+            timeout_secs: 300,
+            window_secs: 60,
+            baseline_secs: 300,
+            incident_lookback_secs: 300,
+            tolerance_abs: 0.02,
+            tolerance_ratio: 1.5,
+            min_requests: 20,
+        }
     }
 }
 
@@ -89,7 +99,10 @@ pub struct LimitsCfg {
 
 impl Default for LimitsCfg {
     fn default() -> Self {
-        Self { max_calls_per_investigation: 200, max_calls_per_minute: 60 }
+        Self {
+            max_calls_per_investigation: 200,
+            max_calls_per_minute: 60,
+        }
     }
 }
 
@@ -117,7 +130,14 @@ pub struct ReplayCfg {
 
 impl Default for ReplayCfg {
     fn default() -> Self {
-        Self { default_n: 20, max_n: 50, timeout_ms: 3000, body_cap: 2048, separation_min_delta: 0.5, routes: vec![] }
+        Self {
+            default_n: 20,
+            max_n: 50,
+            timeout_ms: 3000,
+            body_cap: 2048,
+            separation_min_delta: 0.5,
+            routes: vec![],
+        }
     }
 }
 
@@ -243,7 +263,8 @@ pub struct ServiceCfg {
 
 impl Config {
     pub fn load(path: &std::path::Path) -> Result<Self> {
-        let text = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+        let text =
+            std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
         Ok(toml::from_str(&text)?)
     }
 
@@ -277,7 +298,10 @@ impl Window {
         ts >= self.from && ts <= self.to
     }
     pub fn ending_at(to: DateTime<Utc>, lookback_secs: i64) -> Self {
-        Self { from: to - Duration::seconds(lookback_secs), to }
+        Self {
+            from: to - Duration::seconds(lookback_secs),
+            to,
+        }
     }
 }
 
@@ -311,7 +335,12 @@ impl Event {
     /// Parse one JSON log line. Returns None for anything that is not a
     /// well-formed event with a parseable `ts` -- the caller counts those as
     /// malformed rather than crashing (README C1: never crash on input).
-    pub fn parse(raw: &str, instance_hint: &str, event_id: String, raw_cap: usize) -> Option<Event> {
+    pub fn parse(
+        raw: &str,
+        instance_hint: &str,
+        event_id: String,
+        raw_cap: usize,
+    ) -> Option<Event> {
         let v: Value = serde_json::from_str(raw).ok()?;
         let ts = v.get("ts")?.as_str()?.parse::<DateTime<Utc>>().ok()?;
         let msg = v.get("msg")?.as_str()?.to_string();
@@ -371,7 +400,13 @@ pub struct DeployEvent {
 
 static MASKS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     vec![
-        (Regex::new(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}").unwrap(), "<*>"),
+        (
+            Regex::new(
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            )
+            .unwrap(),
+            "<*>",
+        ),
         (Regex::new(r"\d{4}-\d{2}-\d{2}T[\d:.]+Z?").unwrap(), "<*>"),
         (Regex::new(r"\b[0-9a-f]{8,}\b").unwrap(), "<*>"),
         (Regex::new(r"\b[A-Za-z]+_[0-9a-f]{8,}\b").unwrap(), "<*>"),
@@ -412,13 +447,20 @@ fn hex(b: &[u8]) -> String {
 /// assigned per investigation and must not perturb the digest (ADR-004).
 pub fn digest_json(v: &Value) -> String {
     let stripped = strip_eids(v);
-    sha256_hex(serde_json::to_string(&stripped).unwrap_or_default().as_bytes())
+    sha256_hex(
+        serde_json::to_string(&stripped)
+            .unwrap_or_default()
+            .as_bytes(),
+    )
 }
 
 fn strip_eids(v: &Value) -> Value {
     match v {
         Value::Object(m) => Value::Object(
-            m.iter().filter(|(k, _)| k.as_str() != "eid").map(|(k, v)| (k.clone(), strip_eids(v))).collect(),
+            m.iter()
+                .filter(|(k, _)| k.as_str() != "eid")
+                .map(|(k, v)| (k.clone(), strip_eids(v)))
+                .collect(),
         ),
         Value::Array(a) => Value::Array(a.iter().map(strip_eids).collect()),
         other => other.clone(),
@@ -433,7 +475,13 @@ pub fn cap_item(item: &mut Value, max_bytes: usize) {
             return;
         }
         let Value::Object(m) = item else { return };
-        let Some((k, len)) = m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.len()))).max_by_key(|(_, l)| *l) else { return };
+        let Some((k, len)) = m
+            .iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.len())))
+            .max_by_key(|(_, l)| *l)
+        else {
+            return;
+        };
         if len < 64 {
             return;
         }
@@ -451,15 +499,54 @@ pub fn cap_item(item: &mut Value, max_bytes: usize) {
 /// caps bodies regardless, because the pattern must survive contact with
 /// real data someday"). Matched on the lowercased name: exact, or any name
 /// containing one of the fragments.
-const DROP_HEADER_EXACT: &[&str] = &["authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key", "x-auth-token", "x-csrf-token"];
-const DROP_HEADER_FRAGMENTS: &[&str] = &["auth", "token", "secret", "session", "cookie", "credential", "password", "signature"];
+const DROP_HEADER_EXACT: &[&str] = &[
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "api-key",
+    "x-auth-token",
+    "x-csrf-token",
+];
+const DROP_HEADER_FRAGMENTS: &[&str] = &[
+    "auth",
+    "token",
+    "secret",
+    "session",
+    "cookie",
+    "credential",
+    "password",
+    "signature",
+];
 const HEADER_VALUE_CAP: usize = 256;
 
 /// JSON keys whose values are secret-shaped, compared after lowercasing and
 /// removing `-`/`_`; plus any key ending in one of the suffixes.
 const REDACT_KEYS: &[&str] = &[
-    "password", "passwd", "pwd", "secret", "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "authorization", "auth",
-    "cvv", "cvc", "cvv2", "cardnumber", "pan", "ssn", "privatekey", "accesskey", "secretkey", "clientsecret", "otp", "pin",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "apikey",
+    "authorization",
+    "auth",
+    "cvv",
+    "cvc",
+    "cvv2",
+    "cardnumber",
+    "pan",
+    "ssn",
+    "privatekey",
+    "accesskey",
+    "secretkey",
+    "clientsecret",
+    "otp",
+    "pin",
 ];
 const REDACT_SUFFIXES: &[&str] = &["token", "secret", "password", "apikey"];
 
@@ -471,8 +558,15 @@ pub fn header_is_dropped(name: &str) -> bool {
 }
 
 fn key_is_secret(key: &str) -> bool {
-    let k: String = key.to_ascii_lowercase().chars().filter(|c| *c != '-' && *c != '_' && *c != ' ').collect();
-    REDACT_KEYS.contains(&k.as_str()) || REDACT_SUFFIXES.iter().any(|s| k.len() > s.len() && k.ends_with(s))
+    let k: String = key
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| *c != '-' && *c != '_' && *c != ' ')
+        .collect();
+    REDACT_KEYS.contains(&k.as_str())
+        || REDACT_SUFFIXES
+            .iter()
+            .any(|s| k.len() > s.len() && k.ends_with(s))
 }
 
 /// Keep only headers that are not auth-shaped; cap every value. Returns the
@@ -519,7 +613,11 @@ fn redact_value(v: &mut Value, path: &str, out: &mut Vec<String>) {
     match v {
         Value::Object(m) => {
             for (k, val) in m.iter_mut() {
-                let p = if path.is_empty() { k.clone() } else { format!("{path}.{k}") };
+                let p = if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                };
                 if key_is_secret(k) {
                     *val = Value::String("[redacted]".into());
                     out.push(p);
@@ -551,7 +649,11 @@ pub fn sanitize_body(body: &str, cap: usize) -> SanitizedBody {
     let mut text = match serde_json::from_str::<Value>(body) {
         Ok(mut v) => {
             redact_value(&mut v, "", &mut redactions);
-            if redactions.is_empty() { body.to_string() } else { v.to_string() }
+            if redactions.is_empty() {
+                body.to_string()
+            } else {
+                v.to_string()
+            }
         }
         Err(_) => {
             if PAN_RE.is_match(body) {
@@ -572,7 +674,12 @@ pub fn sanitize_body(body: &str, cap: usize) -> SanitizedBody {
         text.truncate(cut);
         text.push_str("…[capped]");
     }
-    SanitizedBody { text, bytes, truncated, redactions }
+    SanitizedBody {
+        text,
+        bytes,
+        truncated,
+        redactions,
+    }
 }
 
 // ------------------------------------------------------------------ ledger
@@ -630,7 +737,15 @@ mod tests {
         let h = json!({"Content-Type": "application/json", "Authorization": "Bearer x", "Cookie": "a=b",
                        "X-Client-Class": "premium", "X-Auth-Token": "t", "X-Idempotency-Key": "k", "User-Agent": "ua"});
         let (kept, dropped) = sanitize_headers(&h);
-        assert_eq!(kept.keys().cloned().collect::<Vec<_>>(), vec!["content-type", "user-agent", "x-client-class", "x-idempotency-key"]);
+        assert_eq!(
+            kept.keys().cloned().collect::<Vec<_>>(),
+            vec![
+                "content-type",
+                "user-agent",
+                "x-client-class",
+                "x-idempotency-key"
+            ]
+        );
         assert_eq!(dropped, vec!["authorization", "cookie", "x-auth-token"]);
     }
 
@@ -661,7 +776,10 @@ mod tests {
         assert!(!s.text.contains("\"abc\""));
         let mut r = s.redactions.clone();
         r.sort();
-        assert_eq!(r, vec!["card.cvv", "card.number:pan", "password", "session_token"]);
+        assert_eq!(
+            r,
+            vec!["card.cvv", "card.number:pan", "password", "session_token"]
+        );
     }
 
     #[test]
