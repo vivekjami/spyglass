@@ -30,7 +30,35 @@ pub struct Config {
     pub drain: DrainCfg,
     pub novelty: NoveltyCfg,
     pub changepoints: ChangepointCfg,
+    pub ranking: RankingCfg,
+    pub bundle: BundleCfg,
     pub services: Vec<ServiceCfg>,
+}
+
+/// README C5 / ADR-008: the hand-weighted linear ranking model. Weights are
+/// opinions -- stated here, tuned on S1, inspectable in every ledger entry.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct RankingCfg {
+    pub w_n: f64,
+    pub w_t: f64,
+    pub w_s: f64,
+    pub w_d: f64,
+    pub w_f: f64,
+    pub w_r: f64,
+    /// Temporal proximity decays as exp(-|t - T0| / tau).
+    pub proximity_tau_secs: f64,
+    /// Service relevance decays by this factor per topology hop from the focus service.
+    pub relevance_hop_decay: f64,
+    /// Error changepoints / error templates within this of each other on connected services are one cascade.
+    pub cascade_secs: f64,
+}
+
+/// README C6: bundle bounds, enforced by the engine.
+#[derive(Deserialize, Clone, Debug)]
+pub struct BundleCfg {
+    pub max_bytes: usize,
+    pub incident_window_secs: i64,
+    pub baseline_secs: i64,
 }
 
 #[derive(Deserialize, Clone, Debug)]

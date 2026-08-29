@@ -39,3 +39,18 @@ def call(sid: str, name: str, args: dict, url: str = ENGINE) -> dict:
     if res.get("isError"):
         raise RuntimeError(res["content"][0]["text"][:400])
     return json.loads(res["content"][0]["text"])
+
+
+def wait_ready(sid: str, url: str = ENGINE, max_secs: float = 120.0) -> dict:
+    """Block until the engine has read every source file to its end at least
+    once (`caught_up`): after a restart the store is rebuilt from the logs,
+    and a query issued mid-rebuild sees a partial world."""
+    import time
+    t0 = time.monotonic()
+    r: dict = {}
+    while time.monotonic() - t0 < max_secs:
+        r = call(sid, "freshness_watermark", {}, url=url)["result"]
+        if r.get("caught_up"):
+            return r
+        time.sleep(0.5)
+    raise RuntimeError(f"engine did not catch up within {max_secs}s: {r}")

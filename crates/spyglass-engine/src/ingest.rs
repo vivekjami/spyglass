@@ -113,9 +113,12 @@ fn log_tailer(engine: Arc<Engine>) {
         }
         if reset {
             engine.store.write().expect("store lock").reset();
+            engine.caught_up.store(false, std::sync::atomic::Ordering::Relaxed);
             cursors.clear();
             continue;
         }
+        // Every file has been read to its end once: from here on, lines are live.
+        engine.caught_up.store(true, std::sync::atomic::Ordering::Relaxed);
         thread::sleep(Duration::from_millis(cfg.ingest.poll_ms));
     }
 }

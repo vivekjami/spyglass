@@ -110,3 +110,27 @@ sigma_floor_count        = 1.0    # sigma floors: a flat baseline must not turn 
 sigma_floor_rate         = 0.01   #   1 percentage point for error_rate (counts also get a Poisson floor, sqrt(mean))
 sigma_floor_latency_frac = 0.05   #   5% of the baseline mean for latency_ms_mean ...
 sigma_floor_latency_ms   = 2.0    #   ... and never below 2 ms
+
+# Phase 6 -- evidence ranking (README C5, ADR-008). A hand-weighted linear
+# model: score = w_n*novelty + w_t*temporal_proximity + w_s*severity
+#             + w_d*deploy_correlation + w_f*freq_shift + w_r*service_relevance.
+# Every factor is in [0, 1]; every ledger entry records the weights used.
+# The spec's v0 weights, kept as-is after Phase 6 (docs/phase6-findings.md
+# says what they do and do not order correctly on S1).
+[ranking]
+w_n = 0.30    # novelty: template new/bursting in the window; a deploy is new by definition; changepoints carry theirs in w_f
+w_t = 0.15    # temporal proximity to the incident onset T0 (earliest error changepoint, else earliest novel ERROR template, else window end)
+w_s = 0.10    # severity: ERROR 1.0, WARN 0.5, INFO 0.0 for templates; error-series changepoints 1.0, latency 0.6, traffic 0.3; deploys 0.5
+w_d = 0.25    # deploy correlation: within +-windows.deploy_correlation_secs of a change event of another kind
+w_f = 0.10    # frequency shift: min(1, log2(ratio) / novelty.burst_log2_scale); "from zero" / first seen = 1.0
+w_r = 0.10    # service relevance: relevance_hop_decay ^ hops from the focus service; 1.0 for everything when no focus is given
+proximity_tau_secs   = 120.0
+relevance_hop_decay  = 0.75
+cascade_secs         = 2.0    # error facts on connected services within this of each other are one cascade: reported once, origin first
+
+# Phase 7 -- evidence bundles (README C6). The one-call investigation
+# starter: ranked, deduped, kind-diverse, byte-bounded.
+[bundle]
+max_bytes            = 8192   # the whole bundle, serialised; items are added in rank order until the budget is spent
+incident_window_secs = 300    # default window: the last 5 minutes of ingested data
+baseline_secs        = 900    # novelty baseline: the 15 minutes before the window
