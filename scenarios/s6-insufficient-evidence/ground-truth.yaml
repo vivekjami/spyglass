@@ -19,7 +19,7 @@ timeline:
     service: orders
     version: v1.1
     deploy_id: D-1
-    lead_secs_before_fault: 360
+    lead_secs_before_fault: 360     # fast timeline: 130 -- in both cases outside the engine's +-120 s deploy-correlation window
   fault:
     kind: dependency_degradation
     service: fraudcheck

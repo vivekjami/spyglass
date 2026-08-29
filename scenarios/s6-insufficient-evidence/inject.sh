@@ -26,7 +26,10 @@ STEADY="${S6_STEADY_SECS:-120}"
 LEAD="${S6_BENIGN_LEAD_SECS:-360}"
 POST="${S6_POST_SECS:-90}"
 FAST="${SCENARIO_FAST:-${S1_FAST:-0}}"
-if [ "$FAST" = "1" ]; then STEADY=40; LEAD=50; POST=70; fi
+# The fast lead stays > 120 s: the engine joins a deploy to a changepoint
+# within +-120 s, and the benign deploy must be OUTSIDE that window, or the
+# fast timeline would be a different scenario from the pre-registered one.
+if [ "$FAST" = "1" ]; then STEADY=40; LEAD=130; POST=70; fi
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="data/scenarios/s6/$RUN_ID"

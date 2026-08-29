@@ -23,10 +23,15 @@ DEPLOYER="${DEPLOYER:-./target/release/deployer}"
 DATA_DIR="data/deploy"
 FILL_BYTES="${S3_FILL_BYTES:-66000000}"
 
-STEADY="${S3_STEADY_SECS:-120}"
+# "Known-but-rare" needs history: the engine's novelty baseline is the time
+# BEFORE its default 5-minute incident window, and burst scoring needs at
+# least 60 s of it. A steady state shorter than ~6 minutes leaves no
+# baseline inside the run and the burst is undetermined -- so this
+# scenario's steady state is long, on both timelines, by design.
+STEADY="${S3_STEADY_SECS:-360}"
 POST="${S3_POST_SECS:-90}"
 FAST="${SCENARIO_FAST:-${S1_FAST:-0}}"
-if [ "$FAST" = "1" ]; then STEADY=90; POST=70; fi
+if [ "$FAST" = "1" ]; then STEADY=300; POST=70; fi
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="data/scenarios/s3/$RUN_ID"

@@ -13,7 +13,7 @@ alert: >-
   for 2 consecutive windows. Investigate; roll back if a deploy caused it.
 
 timeline:
-  steady_state_secs: 120
+  steady_state_secs: 360     # fast: 300 -- long on purpose: the burst needs >= 60 s of novelty baseline before the engine's 5-minute window
   fault:
     kind: redis_fill
     service: redis

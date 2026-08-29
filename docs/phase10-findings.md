@@ -52,8 +52,23 @@ Every scenario reproduces to the request (F1 of Phase 1, re-measured):
 | Scenario | Two runs, fast timeline | Post-fault 5xx | Post-fault p95 | Drift |
 |---|---|---|---|---|
 | S2 | `20260829T130851Z`, `20260829T131500Z` | 29.3 % / 29.3 % | 8,013 / 8,013 ms | **0.0 pt** |
-| S3 | `20260829T132109Z`, `20260829T132420Z` (first image) · re-authored `[see README]` | ≈ 97–98 % | — | **0.0 pt** |
-| S6 | `[see README]` | 0.0 % / 0.0 % (a latency-only symptom) | ≈ 5 s | **0.0 pt** |
+| S3 | final pass `[see README]` (two earlier passes, 0.0 pt each, taught F2) | 98.0 % / 98.0 % | — | **0.0 pt** |
+| S6 | `20260829T134326Z`, `20260829T134815Z` (130 s lead; an earlier 50 s-lead pass taught F1b) | 0.0 % / 0.0 % (a latency-only symptom) | 5,071 / 5,068 ms | **0.0 pt** |
+
+### F1b. A fast timeline can be a different scenario
+
+S6's first fast pass put the benign `orders v1.1` deploy 50 s before the
+symptom, as S1's fast timeline does. In S1 that is harmless: the fault's
+own deploy is 0.6 s from the changepoint and wins the nearest-deploy join.
+In S6 there is no closer deploy, so the engine annotated the latency
+changepoints `changepoint_after_deploy +53.9 s`, `D-1`, and the bundle
+drew `D-1 -[precedes_within_120s]->` both — evidence that, by the SOP's
+own rules, makes the decoy a legitimate suspect. That is not the
+pre-registered scenario ("six minutes earlier, outside the correlation
+window"); it is a harder and unfair one. The fast lead is now 130 s, past
+the engine's ±120 s join, and the ground truth says so. The general rule:
+a compressed timeline must preserve every *relation* the engine computes,
+not just the order of events.
 
 ### F2. The engine keys templates by log level — a known-but-rare template must share the level
 
@@ -70,6 +85,18 @@ Decision: the hiccup logs at ERROR, as a retried write failure usually
 does ("transient; retried once, ok" in `detail`). The level key stays —
 it is right for the reason Phase 4 gave. Recorded in the scenario's ground
 truth so the next author does not rediscover it.
+
+The second pass found the other half: with the levels aligned the template
+merged — and vanished from `novel_templates` entirely. Burst novelty is
+`rate_window / rate_baseline`, the baseline is the 15 minutes *before* the
+engine's default 5-minute window, and the score is undetermined (0, never
+inflated — a Phase 4 guard) with fewer than 60 s of real baseline. A
+160-second run sits wholly inside the window; there is no baseline. A
+first-seen template does not need one (S1's never did), a bursting one
+does. So S3's steady state is 360 s by default and 300 s on the fast
+timeline, leaving ≥ 60 s of history before the window; the engine is
+unchanged. "Known-but-rare" is a statement about history, and the scenario
+has to supply it.
 
 ### F3. Score mechanically, or admit an opinion
 
