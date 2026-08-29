@@ -413,3 +413,316 @@ pub fn service_topology(engine: &Engine) -> Result<(ToolOutput, Value)> {
     let payload = json!({"nodes": nodes, "edges": edges, "source": "static, from spyglass.toml (derived-from-traces is future work)"});
     Ok((ToolOutput { payload, summary: format!("service_topology → {} nodes, {} edges", engine.cfg.services.len(), edges.len()), window: None, deterministic: true, available: 0 }, json!({})))
 }
+
+// ------------------------------------------------------------------ novel_templates
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct NoveltyArgs {
+    /// The incident window {from, to}. Default: the last 5 minutes of ingested data.
+    #[serde(default)]
+    pub window: WindowArg,
+    /// The baseline window {from, to} rates are compared against. Default: the 15 minutes before `window`.
+    #[serde(default)]
+    pub baseline: WindowArg,
+    /// Drop templates scoring below this (0..1). Default 0.2.
+    pub min_score: Option<f64>,
+    /// Max templates to return (default 20).
+    pub limit: Option<usize>,
+    /// Restrict to these services/instances. Empty = all.
+    #[serde(default)]
+    pub services: Vec<String>,
+    /// Only templates whose dominant level in the window is this: INFO | WARNING | ERROR
+    pub level: Option<String>,
+}
+
+pub fn severity_rank(level: &str) -> u8 {
+    match level {
+        "CRITICAL" | "FATAL" => 4,
+        "ERROR" => 3,
+        "WARNING" | "WARN" => 2,
+        "INFO" => 1,
+        _ => 0,
+    }
+}
+
+/// The novelty score (README C3), as a pure function so it can be tested.
+///
+///   1.0                                          if the template first appeared inside the window
+///   min(1, log2(rate_window / rate_baseline) / s) if its rate jumped ("burst novelty")
+///   0                                            otherwise
+///   x severity_boost if the dominant level is ERROR or worse, capped at 1.0
+///
+/// A template that first appeared within `warmup` of the earliest known event
+/// is pre-existing vocabulary: the engine started mid-stream and cannot claim
+/// it is new. `count_baseline == 0` is floored to one event so a template
+/// absent from the baseline scores as a burst of `count_window x B/W`, never
+/// as infinity.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NoveltyInput {
+    pub first_seen: DateTime<Utc>,
+    pub earliest_known: DateTime<Utc>,
+    pub warmup_secs: i64,
+    pub window: Window,
+    pub baseline: Window,
+    pub count_window: u64,
+    pub count_baseline: u64,
+    pub dominant_severity: u8,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoveltyScore {
+    pub score: f64,
+    pub reason: &'static str,
+    pub burst_ratio: Option<f64>,
+    pub boosted: bool,
+}
+
+pub fn novelty_score(i: &NoveltyInput, cfg: &spyglass_core::NoveltyCfg) -> NoveltyScore {
+    let pre_existing = i.first_seen <= i.earliest_known + Duration::seconds(i.warmup_secs);
+    let w_secs = (i.window.to - i.window.from).num_seconds().max(1) as f64;
+    // The baseline only counts where history exists. A baseline that falls
+    // before the engine's earliest event has zero events for every template,
+    // and "zero" floored to one makes steady traffic look like a 64x burst --
+    // the false positive the quiet-window check exists to catch.
+    let b_from = i.baseline.from.max(i.earliest_known);
+    let b_secs = (i.baseline.to - b_from).num_seconds();
+    let baseline_ok = b_secs >= cfg.min_baseline_secs;
+    let rate_w = i.count_window as f64 / w_secs;
+    let rate_b = i.count_baseline.max(1) as f64 / (b_secs.max(1) as f64);
+    let ratio = if rate_w > 0.0 { rate_w / rate_b } else { 0.0 };
+    let (mut score, reason, burst_ratio) = if !pre_existing && i.window.contains(i.first_seen) && i.count_window > 0 {
+        (1.0, "first_seen_in_window", None)
+    } else if !baseline_ok {
+        (0.0, "insufficient_baseline", None)
+    } else if ratio > 1.0 && i.count_window > 0 {
+        ((ratio.log2() / cfg.burst_log2_scale).clamp(0.0, 1.0), "burst", Some(ratio))
+    } else {
+        (0.0, "none", if i.count_window > 0 { Some(ratio) } else { None })
+    };
+    let boosted = score > 0.0 && i.dominant_severity >= 3;
+    if boosted {
+        score = (score * cfg.severity_boost).min(1.0);
+    }
+    NoveltyScore { score: (score * 1000.0).round() / 1000.0, reason, burst_ratio: burst_ratio.map(|r| (r * 100.0).round() / 100.0), boosted }
+}
+
+pub fn novel_templates(engine: &Engine, a: &NoveltyArgs) -> Result<(ToolOutput, Value)> {
+    let cfg = &engine.cfg;
+    let ncfg = &cfg.novelty;
+    let store = engine.store.read().expect("store lock");
+    let watermark = store.newest_log_ts().unwrap_or_else(Utc::now);
+    let w = match a.window.given() {
+        Some(w) => resolve(&store, cfg, Some(w))?,
+        None => Window::ending_at(watermark, ncfg.incident_window_secs),
+    };
+    let b = match a.baseline.given() {
+        Some(b) => resolve(&store, cfg, Some(b))?,
+        None => Window { from: w.from - Duration::seconds(ncfg.baseline_secs), to: w.from },
+    };
+    let min_score = a.min_score.unwrap_or(ncfg.min_score);
+    let limit = a.limit.unwrap_or(cfg.bounds.max_items).clamp(1, cfg.bounds.max_items);
+    let level_filter = a.level.as_ref().map(|l| l.to_uppercase());
+    let earliest = store.earliest_ts.unwrap_or(watermark);
+    let b_effective = Window { from: b.from.max(earliest), to: b.to };
+    let history_ok = (b_effective.to - b_effective.from).num_seconds() >= ncfg.min_baseline_secs;
+
+    struct Agg {
+        w: u64,
+        b: u64,
+        first_in_w: Option<DateTime<Utc>>,
+        levels_w: BTreeMap<String, u64>,
+        services: BTreeSet<String>,
+        instances: BTreeSet<String>,
+        examples: Vec<usize>,
+        has_stack: bool,
+    }
+    let mut groups: HashMap<String, Agg> = HashMap::new();
+    for (idx, e) in store.events.iter().enumerate() {
+        let in_w = w.contains(e.ts);
+        let in_b = b.contains(e.ts);
+        if !in_w && !in_b {
+            continue;
+        }
+        if !a.services.is_empty() && !a.services.iter().any(|s| *s == e.service || *s == e.instance) {
+            continue;
+        }
+        let g = groups.entry(e.template_id.clone()).or_insert_with(|| Agg {
+            w: 0, b: 0, first_in_w: None, levels_w: BTreeMap::new(),
+            services: BTreeSet::new(), instances: BTreeSet::new(), examples: vec![], has_stack: false,
+        });
+        if in_b {
+            g.b += 1;
+        }
+        if in_w {
+            g.w += 1;
+            g.first_in_w = Some(g.first_in_w.map_or(e.ts, |t| t.min(e.ts)));
+            *g.levels_w.entry(e.level.clone()).or_default() += 1;
+            g.services.insert(e.service.clone());
+            g.instances.insert(e.instance.clone());
+            g.has_stack |= e.has_stack;
+            if g.examples.len() < 3 {
+                g.examples.push(idx);
+            }
+        }
+    }
+
+    struct Row<'a> { tid: &'a String, g: &'a Agg, dominant: String, sev: u8, ns: NoveltyScore, first_seen: DateTime<Utc> }
+    let mut rows: Vec<Row> = Vec::new();
+    for (tid, g) in &groups {
+        if g.w == 0 {
+            continue;
+        }
+        let t = &store.templates[tid];
+        let (dominant, _) = g.levels_w.iter().max_by_key(|(l, c)| (**c, severity_rank(l))).map(|(l, c)| (l.clone(), *c)).unwrap_or_default();
+        if level_filter.as_deref().is_some_and(|l| l != dominant) {
+            continue;
+        }
+        let sev = severity_rank(&dominant);
+        let ns = novelty_score(&NoveltyInput {
+            first_seen: t.first_seen, earliest_known: earliest, warmup_secs: ncfg.warmup_secs,
+            window: w, baseline: b, count_window: g.w, count_baseline: g.b, dominant_severity: sev,
+        }, ncfg);
+        if ns.score >= min_score {
+            rows.push(Row { tid, g, dominant, sev, ns, first_seen: t.first_seen });
+        }
+    }
+    // Documented order: novelty desc, severity desc, has_stack desc,
+    // first_seen asc (the earliest novel thing is the likeliest origin),
+    // count desc, template_id asc.
+    rows.sort_by(|x, y| {
+        y.ns.score.partial_cmp(&x.ns.score).unwrap_or(std::cmp::Ordering::Equal)
+            .then(y.sev.cmp(&x.sev))
+            .then(y.g.has_stack.cmp(&x.g.has_stack))
+            .then(x.first_seen.cmp(&y.first_seen))
+            .then(y.g.w.cmp(&x.g.w))
+            .then(x.tid.cmp(y.tid))
+    });
+    let available = rows.len();
+    let w_min = (w.to - w.from).num_seconds().max(1) as f64 / 60.0;
+    let b_eff_min = (b_effective.to - b_effective.from).num_seconds().max(1) as f64 / 60.0;
+    let mut items = Vec::new();
+    for r in rows.iter().take(limit) {
+        let ex = &store.events[r.g.examples[0]];
+        let mut excerpt = ex.raw.clone();
+        if excerpt.len() > cfg.bounds.excerpt_bytes {
+            excerpt.truncate(cfg.bounds.excerpt_bytes);
+            excerpt.push_str("…[capped]");
+        }
+        let mut item = json!({
+            "kind": "novel_template",
+            "template_id": r.tid,
+            "pattern": store.templates[r.tid].pattern,
+            "novelty": r.ns.score,
+            "novelty_reason": r.ns.reason,
+            "burst_ratio": r.ns.burst_ratio,
+            "severity_boosted": r.ns.boosted,
+            "dominant_level": r.dominant,
+            "level_hist": r.g.levels_w,
+            "first_seen_ever": fmt_ts(r.first_seen),
+            "first_seen_in_window": r.g.first_in_w.map(fmt_ts),
+            "count_window": r.g.w,
+            "count_baseline": r.g.b,
+            "rate_window_per_min": (r.g.w as f64 / w_min * 10.0).round() / 10.0,
+            "rate_baseline_per_min": (r.g.b as f64 / b_eff_min * 10.0).round() / 10.0,
+            "services": r.g.services,
+            "instances": r.g.instances,
+            "has_stack": r.g.has_stack,
+            "exemplar_event_ids": r.g.examples.iter().map(|i| store.events[*i].event_id.clone()).collect::<Vec<_>>(),
+            "excerpt": excerpt,
+        });
+        cap_item(&mut item, cfg.bounds.max_bytes_per_item);
+        items.push(item);
+    }
+    let top = rows.first().map(|r| format!("{} [{}] novelty {} ({}) ×{} first {}",
+        store.templates[r.tid].pattern, r.dominant, r.ns.score, r.ns.reason, r.g.w, r.g.first_in_w.map(fmt_ts).unwrap_or_default()))
+        .unwrap_or_else(|| "nothing novel or bursting".into());
+    let summary = format!("novel_templates → {} of {} templates in window score ≥ {}; #1: {}", items.len(), groups.values().filter(|g| g.w > 0).count(), min_score, top);
+    let payload = json!({
+        "items": items,
+        "window": w, "baseline": b, "baseline_effective": b_effective,
+        "history_start": fmt_ts(earliest),
+        "baseline_sufficient": history_ok,
+        "caveat": if history_ok { Value::Null } else { Value::String(format!("only {} s of real baseline history before the window (need {}); burst novelty is undetermined, first-seen novelty still applies", (b_effective.to - b_effective.from).num_seconds().max(0), ncfg.min_baseline_secs)) },
+        "templates_in_window": groups.values().filter(|g| g.w > 0).count(),
+    });
+    let resolved = json!({"window": w, "baseline": b, "min_score": min_score, "limit": limit, "services": a.services, "level": a.level});
+    Ok((ToolOutput { payload, summary, window: Some(w), deterministic: true, available }, resolved))
+}
+
+#[cfg(test)]
+mod novelty_tests {
+    use super::*;
+
+    fn cfg() -> spyglass_core::NoveltyCfg {
+        spyglass_core::NoveltyCfg { incident_window_secs: 300, baseline_secs: 900, warmup_secs: 30, min_baseline_secs: 60, burst_log2_scale: 6.0, severity_boost: 1.25, min_score: 0.2 }
+    }
+    fn t(s: &str) -> DateTime<Utc> { s.parse().unwrap() }
+    fn base() -> NoveltyInput {
+        NoveltyInput {
+            first_seen: t("2026-01-01T00:00:00Z"), earliest_known: t("2026-01-01T00:00:00Z"), warmup_secs: 30,
+            window: Window { from: t("2026-01-01T00:20:00Z"), to: t("2026-01-01T00:25:00Z") },
+            baseline: Window { from: t("2026-01-01T00:05:00Z"), to: t("2026-01-01T00:20:00Z") },
+            count_window: 100, count_baseline: 300, dominant_severity: 1,
+        }
+    }
+
+    #[test]
+    fn first_seen_inside_the_window_is_maximally_novel() {
+        let i = NoveltyInput { first_seen: t("2026-01-01T00:21:00Z"), ..base() };
+        let s = novelty_score(&i, &cfg());
+        assert_eq!((s.score, s.reason), (1.0, "first_seen_in_window"));
+    }
+
+    #[test]
+    fn pre_existing_vocabulary_is_never_new_even_if_the_window_covers_startup() {
+        // engine started at 00:00; template first seen at 00:00:10; window includes startup
+        let i = NoveltyInput { first_seen: t("2026-01-01T00:00:10Z"),
+            window: Window { from: t("2026-01-01T00:00:00Z"), to: t("2026-01-01T00:05:00Z") },
+            baseline: Window { from: t("2025-12-31T23:45:00Z"), to: t("2026-01-01T00:00:00Z") },
+            count_window: 100, count_baseline: 0, ..base() };
+        let s = novelty_score(&i, &cfg());
+        assert_ne!(s.reason, "first_seen_in_window");
+    }
+
+    #[test]
+    fn steady_rate_scores_zero() {
+        // 100 in 5 min == 300 in 15 min: ratio 1.0, no burst
+        let s = novelty_score(&base(), &cfg());
+        assert_eq!((s.score, s.reason), (0.0, "none"));
+    }
+
+    #[test]
+    fn a_64x_burst_saturates_and_8x_is_half() {
+        let i = NoveltyInput { count_window: 6400, count_baseline: 300, ..base() }; // 64x rate
+        assert_eq!(novelty_score(&i, &cfg()).score, 1.0);
+        let i = NoveltyInput { count_window: 800, count_baseline: 300, ..base() };  // 8x rate -> log2(8)/6 = 0.5
+        let s = novelty_score(&i, &cfg());
+        assert_eq!((s.score, s.reason), (0.5, "burst"));
+    }
+
+    #[test]
+    fn absent_from_baseline_is_floored_not_infinite() {
+        let i = NoveltyInput { count_window: 10, count_baseline: 0, ..base() }; // rate_b floored to 1/900s; ratio = (10/300)/(1/900) = 30
+        let s = novelty_score(&i, &cfg());
+        assert_eq!(s.reason, "burst");
+        assert!(s.score > 0.7 && s.score < 1.0, "{s:?}");
+    }
+
+    #[test]
+    fn a_baseline_before_history_makes_burst_undetermined_not_inflated() {
+        // engine history starts 00:19:30; baseline 00:05-00:20 has only 30 s of real coverage
+        let i = NoveltyInput { earliest_known: t("2026-01-01T00:19:30Z"), first_seen: t("2026-01-01T00:19:31Z"),
+            count_window: 100, count_baseline: 0, ..base() };
+        let s = novelty_score(&i, &cfg());
+        assert_eq!((s.score, s.reason), (0.0, "insufficient_baseline"));
+    }
+
+    #[test]
+    fn severity_boost_lifts_errors_but_caps_at_one() {
+        let i = NoveltyInput { count_window: 800, count_baseline: 300, dominant_severity: 3, ..base() }; // 0.5 * 1.25
+        let s = novelty_score(&i, &cfg());
+        assert_eq!((s.score, s.boosted), (0.625, true));
+        let i = NoveltyInput { first_seen: t("2026-01-01T00:21:00Z"), dominant_severity: 3, ..base() };
+        assert_eq!(novelty_score(&i, &cfg()).score, 1.0);
+    }
+}

@@ -4,9 +4,11 @@
 //! Phase 3 shape ("ugly but complete"): one crate, three modules. The store
 //! is rebuilt from the source log files on start; segment files are written
 //! as a durable copy but not yet read back. Templates are masking-based
-//! (Phase 4 adds the Drain tree and novelty scoring). Metrics are ingested
-//! and watermarked but not yet used by a tool (Phase 5 adds changepoints).
+//! then routed through a Drain tree (Phase 4) that owns template identity.
+//! Metrics are ingested and watermarked but not yet used by a tool (Phase 5
+//! adds changepoints).
 
+pub mod drain;
 pub mod ingest;
 pub mod tools;
 
@@ -40,8 +42,9 @@ pub struct Template {
     pub example_idx: Vec<usize>,
 }
 
-#[derive(Default)]
 pub struct Store {
+    /// Template identity lives here: masked message -> Drain cluster.
+    pub drain: drain::Drain,
     pub events: Vec<Event>,
     pub by_event_id: HashMap<String, usize>,
     pub templates: HashMap<String, Template>,
@@ -52,14 +55,45 @@ pub struct Store {
     pub watermarks: BTreeMap<String, DateTime<Utc>>,
     pub ingested: u64,
     pub malformed: u64,
+    /// Earliest event timestamp in the store: the start of known history.
+    /// Novelty is only claimable for templates that appeared after it.
+    pub earliest_ts: Option<DateTime<Utc>>,
     /// Bumped whenever a source file shrinks (the stack was reset); the
     /// store is cleared so evidence from a previous incident cannot leak in.
     pub epoch: u64,
+    drain_cfg: spyglass_core::DrainCfg,
 }
 
 impl Store {
-    pub fn append(&mut self, e: Event) {
+    pub fn new(drain_cfg: spyglass_core::DrainCfg) -> Self {
+        Self {
+            drain: drain::Drain::new(drain_cfg.clone()),
+            events: Vec::new(),
+            by_event_id: HashMap::new(),
+            templates: HashMap::new(),
+            deploys: Vec::new(),
+            metrics: HashMap::new(),
+            watermarks: BTreeMap::new(),
+            ingested: 0,
+            malformed: 0,
+            earliest_ts: None,
+            epoch: 0,
+            drain_cfg,
+        }
+    }
+
+    pub fn append(&mut self, mut e: Event) {
         let idx = self.events.len();
+        // Drain assigns identity from the masked message, keyed by log level:
+        // "request completed" (INFO) and "request failed" (ERROR) share one of
+        // two tokens and would otherwise merge at the 0.5 threshold -- a
+        // distinction no investigator wants erased. The level routes the tree;
+        // similarity is measured over message tokens only.
+        let tokens: Vec<String> = e.pattern.split_whitespace().map(str::to_string).collect();
+        let (cid, _created) = self.drain.insert_keyed(&e.level, tokens);
+        e.template_id = format!("T{cid}");
+        e.pattern = self.drain.cluster(cid).map(|c| c.template()).unwrap_or_else(|| e.pattern.clone());
+        self.earliest_ts = Some(self.earliest_ts.map_or(e.ts, |t| t.min(e.ts)));
         let t = self.templates.entry(e.template_id.clone()).or_insert_with(|| Template {
             template_id: e.template_id.clone(),
             pattern: e.pattern.clone(),
@@ -71,6 +105,7 @@ impl Store {
             instances: BTreeSet::new(),
             example_idx: vec![],
         });
+        t.pattern = e.pattern.clone(); // a merge may have added wildcards since
         t.count += 1;
         t.first_seen = t.first_seen.min(e.ts);
         t.last_seen = t.last_seen.max(e.ts);
@@ -91,7 +126,7 @@ impl Store {
 
     pub fn reset(&mut self) {
         let epoch = self.epoch + 1;
-        *self = Store::default();
+        *self = Store::new(self.drain_cfg.clone());
         self.epoch = epoch;
     }
 
@@ -172,9 +207,10 @@ impl Engine {
     pub fn new(cfg: Config) -> Arc<Self> {
         fs::create_dir_all(&cfg.paths.ledger_dir).ok();
         fs::create_dir_all(&cfg.paths.segment_dir).ok();
+        let store = Store::new(cfg.drain.clone());
         Arc::new(Self {
             cfg,
-            store: RwLock::new(Store::default()),
+            store: RwLock::new(store),
             investigations: Mutex::new(HashMap::new()),
             started: Utc::now(),
         })

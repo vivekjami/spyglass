@@ -79,3 +79,18 @@ role = "orders database"
 name = "redis"
 service = "redis"
 role = "payments cache"
+
+# Phase 4 -- template mining and novelty (README C3, ADR-006).
+[drain]
+depth                = 3      # root -> token count -> first token -> second token -> leaf
+similarity_threshold = 0.5    # min fraction of positions that must match to merge into a cluster
+max_children         = 100    # per tree node; overflow routes to the <*> branch
+
+[novelty]
+incident_window_secs = 300    # default `window`: the last 5 minutes of ingested data
+baseline_secs        = 900    # default `baseline`: the 15 minutes before the window
+warmup_secs          = 30     # templates first seen within this of the engine's earliest event are pre-existing vocabulary, never "new"
+min_baseline_secs    = 60     # burst scoring needs at least this much REAL baseline history, else it is undetermined (0), not inflated
+burst_log2_scale     = 6.0    # burst score = log2(rate_window / rate_baseline) / scale, so 64x -> 1.0
+severity_boost       = 1.25   # x1.25 when the template's dominant level in the window is ERROR (capped at 1.0)
+min_score            = 0.2    # default `min_score`

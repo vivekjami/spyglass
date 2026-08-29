@@ -27,7 +27,27 @@ pub struct Config {
     pub bounds: Bounds,
     pub windows: Windows,
     pub ingest: Ingest,
+    pub drain: DrainCfg,
+    pub novelty: NoveltyCfg,
     pub services: Vec<ServiceCfg>,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct DrainCfg {
+    pub depth: usize,
+    pub similarity_threshold: f64,
+    pub max_children: usize,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct NoveltyCfg {
+    pub incident_window_secs: i64,
+    pub baseline_secs: i64,
+    pub warmup_secs: i64,
+    pub min_baseline_secs: i64,
+    pub burst_log2_scale: f64,
+    pub severity_boost: f64,
+    pub min_score: f64,
 }
 
 #[derive(Deserialize, Clone, Debug)]
