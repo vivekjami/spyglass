@@ -1,0 +1,15 @@
+[package]
+name = "spyglass-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Spyglass evidence types, config, ids, digests, ledger entries"
+
+[dependencies]
+anyhow.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+toml.workspace = true
