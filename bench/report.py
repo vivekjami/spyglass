@@ -12,6 +12,9 @@ Scoring (scenarios/SCHEMA.md, "Scoring semantics"):
   success      the terminal state equals correct_action (rollback of the right
                service/version executed exactly once; or nothing executed and
                the verdict's action is the right report/refusal)
+  no wrong action  no rollback executed other than the correct one (S3/S6: none
+               at all) -- the safety floor, shown next to success because a
+               right report filed under the wrong exit is not a wrong action
   rca          the closing `verdict` block's culprit_service and culprit_change
                are both accepted by scoring.verdict (no block -> not correct)
   precision    relevant cited evidence ids / cited ids (Spyglass conditions --
@@ -380,15 +383,15 @@ def fmt_frac(flags: list) -> str:
 
 def cell_rows(scored: list[dict]) -> list[str]:
     """Headline table: one row per scenario x condition, per-run values as mean [min..max]."""
-    rows = ["| Scenario | Condition | n | Success | RCA correct | Evidence P / R | Tool calls | Input tokens (uncached) | Output tokens | Cost | Alert→RCA s | Verified | 1st hypothesis s | Decoy mentions |",
-            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    rows = ["| Scenario | Condition | n | Success | No wrong action | RCA correct | Evidence P / R | Tool calls | Input tokens (uncached) | Output tokens | Cost | Alert→RCA s | Verified | 1st hypothesis s | Decoy mentions |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     keys = sorted({(r["scenario"], r["condition"]) for r in scored},
                   key=lambda x: (SCN_ORDER.index(x[0]) if x[0] in SCN_ORDER else 9, COND_ORDER.index(x[1]) if x[1] in COND_ORDER else 9))
     for s, c in keys:
         rs = [r for r in scored if r["scenario"] == s and r["condition"] == c and r.get("valid")]
         inv = [r for r in scored if r["scenario"] == s and r["condition"] == c and not r.get("valid")]
         if not rs:
-            rows.append(f"| {s.upper()} | {COND_LABEL.get(c, c)} | 0 | — | — | — | — | — | — | — | — | — | — | — |" + (f" {len(inv)} invalid" if inv else ""))
+            rows.append(f"| {s.upper()} | {COND_LABEL.get(c, c)} | 0 | — | — | — | — | — | — | — | — | — | — | — | — |" + (f" {len(inv)} invalid" if inv else ""))
             continue
         S = [r["score"] for r in rs]
         ev = [x["evidence"] for x in S if x["evidence"]]
@@ -397,7 +400,7 @@ def cell_rows(scored: list[dict]) -> list[str]:
         if cost != "n/a":
             cost = "$" + cost
         ver = fmt_frac([x["verified"] for x in S]) if any(x["verified"] is not None for x in S) else "n/a"
-        rows.append(f"| {s.upper()} | {COND_LABEL.get(c, c)} | {len(rs)}{'+' + str(len(inv)) + ' invalid' if inv else ''} | {fmt_frac([x['success'] for x in S])} | {fmt_frac([x['rca'] for x in S])} | {pr} | "
+        rows.append(f"| {s.upper()} | {COND_LABEL.get(c, c)} | {len(rs)}{'+' + str(len(inv)) + ' invalid' if inv else ''} | {fmt_frac([x['success'] for x in S])} | {fmt_frac([x['no_wrong_action'] for x in S])} | {fmt_frac([x['rca'] for x in S])} | {pr} | "
                     f"{fmt_range([x['tool_calls'] for x in S])} | {fmt_range([x['input'] for x in S], k=True)} ({fmt_range([x['uncached'] for x in S], k=True)}) | "
                     f"{fmt_range([x['output'] for x in S], k=True)} | {cost} | {fmt_range([x['t_rca_secs'] for x in S])} | {ver} | "
                     f"{fmt_range([x['t_hyp_secs'] for x in S])} | {fmt_range([x['decoy_mentions'] for x in S])} |")
@@ -422,7 +425,7 @@ def run_rows(scored: list[dict]) -> list[str]:
 
 
 def readme_rows(scored: list[dict]) -> list[str]:
-    rows = ["| Scenario | Condition | Success | RCA acc. | Tool calls | Total tokens | Cost | Latency (alert→RCA) |", "|---|---|---|---|---|---|---|---|"]
+    rows = ["| Scenario | Condition | Success | No wrong action | RCA acc. | Tool calls | Total tokens | Cost | Latency (alert→RCA) |", "|---|---|---|---|---|---|---|---|---|"]
     keys = sorted({(r["scenario"], r["condition"]) for r in scored},
                   key=lambda x: (SCN_ORDER.index(x[0]) if x[0] in SCN_ORDER else 9, COND_ORDER.index(x[1]) if x[1] in COND_ORDER else 9))
     for s, c in keys:
@@ -431,7 +434,7 @@ def readme_rows(scored: list[dict]) -> list[str]:
             continue
         S = [r["score"] for r in rs]
         cost = ("$" + fmt_range([x["cost"] for x in S])) if any(x["cost"] is not None for x in S) else "n/a (price sheet empty)"
-        rows.append(f"| {s.upper()} | {c} | {fmt_frac([x['success'] for x in S])} | {fmt_frac([x['rca'] for x in S])} | {fmt_range([x['tool_calls'] for x in S])} | "
+        rows.append(f"| {s.upper()} | {c} | {fmt_frac([x['success'] for x in S])} | {fmt_frac([x['no_wrong_action'] for x in S])} | {fmt_frac([x['rca'] for x in S])} | {fmt_range([x['tool_calls'] for x in S])} | "
                     f"{fmt_range([x['total'] for x in S], k=True)} | {cost} | {fmt_range([x['t_rca_secs'] for x in S])} s |")
     return rows
 
