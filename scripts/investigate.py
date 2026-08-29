@@ -141,9 +141,23 @@ def proposal_of(evs: list[dict], tool_call_id: str) -> dict:
     return {"name": "?", "arguments": None}
 
 
+# The evidence engines by their registered MCP server name (scripts/mcp.sh, scripts/tf-setup.py).
+ENGINE_URLS = {"spyglass-engine": "http://localhost:8791/mcp", "spyglass-engine-ablation": "http://localhost:8794/mcp"}
+
+
+def engine_server_of(evs: list[dict]) -> tuple[str | None, str | None]:
+    """(mcp session id, server name) of the evidence engine this run used."""
+    for e in evs:
+        if e.get("type") != "mcp.initialize":
+            continue
+        for s in e.get("mcp_servers", []):
+            if str(s.get("name", "")).startswith("spyglass-engine"):
+                return s.get("session_id"), s.get("name")
+    return None, None
+
+
 def engine_session_of(evs: list[dict]) -> str | None:
-    return next((s.get("session_id") for e in evs if e.get("type") == "mcp.initialize"
-                 for s in e.get("mcp_servers", []) if str(s.get("name", "")).startswith("spyglass-engine")), None)
+    return engine_server_of(evs)[0]
 
 
 def ledger_entries(engine_sid: str | None) -> list[dict]:
@@ -310,9 +324,11 @@ def main() -> None:
         recheck = None
         if entries:
             import subprocess
-            p = subprocess.run([sys.executable, str(ROOT / "scripts/ledger-check.py"), str(lp)], capture_output=True, text=True)
+            # Re-check against the engine that issued the entries (the ablation engine digests differently: P10 F6e).
+            engine_url = ENGINE_URLS.get(engine_server_of(all_events)[1] or "", ENGINE_URLS["spyglass-engine"])
+            p = subprocess.run([sys.executable, str(ROOT / "scripts/ledger-check.py"), str(lp), "--engine", engine_url], capture_output=True, text=True)
             recheck = {"exit": p.returncode, "verdict": p.stdout.strip().splitlines()[-1] if p.stdout else p.stderr[-300:]}
-        result["ledger"] = {"investigation": engine_sid, "path": str(lp.relative_to(ROOT)), "entries": len(entries),
+        result["ledger"] = {"investigation": engine_sid, "engine": engine_url if entries else None, "path": str(lp.relative_to(ROOT)), "entries": len(entries),
                             "eids_issued": len(issued), "eids_cited_in_rca": cited,
                             "eids_cited_valid": [c for c in cited if c in issued],
                             "engine_latency_ms": [en["latency_ms"] for en in entries],

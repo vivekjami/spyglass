@@ -131,6 +131,7 @@ decides. Measured live in `just s9-check` and in every P9 run.
 | Stale evidence | `freshness_watermark` first; safe watermark on every window | built (P3, P7) |
 | TOCTOU | proposal snapshots `expected_current`; execution re-checks; expiry | built + tested (P9) |
 | Partial rollback / partial remediation | verification judges outcomes; non-recovery escalates | built (P9); S5 would exercise the shape |
+| **Verification judging the wrong metric** (found P10) | `verify_recovery` judges the 5xx share only; on S6 (a latency alert) it closed two *wrong* rollbacks as `recovered` with the p95 still above 5 s | **open** — P10 F6d: verification must judge the alert's own metric or refuse; a mechanical evidence floor on proposals (no deploy-correlated change cited → refused before the gate) is the second fix. Recorded, not built, so the matrix stays the matrix |
 | Hallucinated remediation | one action, human-gated; report-only and refuse exits | built (P3, P9); S3 + S6 scored (P10) |
 | Runaway agents / tool-call explosion | engine budget + `iteration_limit` + bounded tools | built + tested (P9) |
 | Excessive cost | tokens per run in every result file | built (P2) |

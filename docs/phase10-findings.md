@@ -149,10 +149,109 @@ bundle stamp `ablation: no-novelty`. Templates stay reachable through
 
 ### F6. What the numbers say
 
-*Read from the generated tables in `docs/benchmark.md`; the per-run table
-there names the file behind every number.*
+*Read from the generated tables in `docs/benchmark.md` (36 runs, 36 valid,
+0 harness errors; the matrix ran unattended 14:08–18:43 UTC on one host);
+the per-run table there names the file behind every number. Means over
+n = 3 with ranges; no significance is claimed.*
 
-`[MEASURE AFTER IMPLEMENTATION — filled when the matrix completes]`
+| | S1 payment regression | S2 config-only release | S3 redis full, no change | S6 unobserved vendor |
+|---|---|---|---|---|
+| **Success** baseline / Spyglass / A1 | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | **0/3 · 1/3 · 3/3** |
+| No wrong action | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 2/3 · **1/3** · 3/3 |
+| RCA correct | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 2/3 · 1/3 · 3/3 |
+| Tool calls | 19 · 18 · 21 | 26 · 30 [15..38] · 39 | 14 · **8.7** · 10 | 29 · 27 · 22 |
+| Input tokens (uncached) | 424k (115k) · 461k (112k) · 525k (141k) | 891k (213k) · 937k (177k) · 1253k (228k) | 210k (83k) · **139k (50k)** · 157k (65k) | 1328k (232k) · 705k (145k) · 400k (121k) |
+| Alert → RCA | 63 s · 78 s · 83 s | 102 s · 109 s · 126 s | 49 s · 46 s · 49 s | 125 s · 99 s · 81 s |
+| Evidence recall (Spyglass / A1) | 100 % · 87 % | 100 % · 100 % | 89 % · **56 %** | 100 % · 100 % |
+
+**1. Where the cause is in the telemetry, the same model finds it with raw
+tools too.** S1–S3: 9/9 correct actions and RCAs for *every* condition. The
+baseline rolled back the config-only release (S2) and reported the redis
+fill with nothing to roll back (S3) three times each. The pre-registered
+prediction — *more accurate* — is not supported on S1–S3 by this model on
+these scenarios; correctness there is a tie. What the evidence plane
+changes on S1–S3 is the *shape* of the investigation, and only sometimes
+the bill.
+
+**2. The bill: cheaper on S3, not on S1 and S2.** S3 is the clean win —
+8.7 calls against 14, 139k input tokens against 210k (−34 %; uncached −40
+%), same answer, every claim cited. On S1 Spyglass costs 9 % more input
+tokens (uncached −3 %) and 15 s more wall time; on S2, 5 % more (uncached
+−17 %) and 7 s. Both are the action path, not the investigation: the
+causal check (2 calls) and the engine-judged verification — 15 of the 54
+S1 Spyglass calls and 25 of 89 on S2 are `verify_recovery`, most of them
+`too_soon` polls (F6a). One S2 run that did not poll finished in 15 calls
+and 329k tokens; the two that did took 36–38 calls and 1.2–1.3 M. The
+baseline has no verification loop to pay for: it re-reads a metric twice
+and declares recovery itself.
+
+**3. What the table cannot show for the baseline: the citations.** Every
+Spyglass RCA cites 7–22 evidence ids; each resolves to the engine's
+record. Precision as pre-registered (relevant ÷ cited) reads 92 % on S1,
+95 % on S3 and 46–47 % on S2 and S6 — the low numbers are the metric's
+denominator, not wrong citations: it counts the causal check's exemplar
+and replay ids and the verification checks as *other* (the ground truth
+has no matcher for them; they are the action's evidence, not the
+cause's). Over root-cause citations alone — relevant ÷ (relevant +
+decoy), computed post hoc from the same per-eid classification, not a
+change to the scorer — Spyglass is at 91–100 % on S1–S3 and cited a decoy
+in four runs out of nine; on S6, 70–100 %, three decoy citations in the
+run that blamed the postgres chatter. The baseline's claims have no ids
+and are not re-checkable — a property, not a score.
+
+**4. What novelty buys, measured by taking it away.** With the templates
+gone (A1) recall drops where the smoking gun *is* a template: S3 56 %
+(the bursting `cache write failed` template is the evidence; A1 finds the
+redis WARN through `search_logs` instead) and S1 87 %; calls and tokens
+rise on S1 (+3 calls, +14 %) and S2 (+9 calls, +34 %) as the model
+searches for what the bundle no longer hands it. Correctness does not
+move on S1–S3: the changepoints and deploy correlation carry the
+answer there.
+
+**5. S6 is the negative result, and the ablation is the surprise.** The
+scenario has a real symptom (p95 +500 ms at orders and the gateway), no
+error, no change event, an unobserved vendor as the cause, and a benign
+deploy 130 s earlier. The pre-registered right answer is to refuse and
+say what would decide it. **A1 refused 3/3**, each time with the
+correlation-window argument in its own words (*"D-1 occurred 129 s prior
+with normal operation in between, and telemetry cannot observe the
+external fraudcheck dependency"*). **Spyglass refused 1/3** and rolled the
+benign deploy back twice; the baseline never refused — it filed
+`report_only` naming `fraudcheck / none` twice (the *No wrong action*
+column shows that floor) and rolled the deploy back once. The two wrong
+Spyglass runs were built on templates: one cited five `search_logs` hits
+and called the latency "cascading … following orders deploy D-1"; the
+other cited the `postgres insert slower than budget` WARN chatter — the
+scenario's decoy, present before and after the fault — as the mechanism.
+With novelty off the bundle is a latency changepoint with `nearest_deploy:
+null` and a deploy outside the window, and the model applied the SOP's
+rule every time. **More evidence made the agent act.** That is the
+thesis's failure mode stated in ADR-001 — an evidence plane that hands
+the model material for a story is worse than none — and it is the finding
+this benchmark exists to be able to produce. The engine and SOP gaps it
+exposes are in F6d.
+
+**6. Verification.** S1: the engine closed 3/3 Spyglass and 3/3 A1 runs
+(`verified_recovery`); the baseline's 3/3 is its own re-read. S2: 2/3 —
+one false escalation (F6b). S6: the two wrong rollbacks were "verified"
+by a 5xx-only check (F6d). S3 has no action to verify.
+
+**7. The sandbox never ran a command.** Every `exec` in every run —
+36 in the matrix and every run since Phase 3 — returned the same harness
+error: *Sandbox initialization failed: Failed to pip install pydantic …
+Cannot connect to proxy*. The sandbox is enabled in every manifest and the
+agent calls it (the SOP's `sleep 15` between verification checks; the
+baseline's `ls -la`, and one attempt to read `data/logs/orders.jsonl`
+through the filesystem — refused with the same error, so no condition
+read anything the tools did not serve). Symmetric across conditions, so
+the comparison stands; but the pacing `sleep` fell back to polling (F6a),
+and "sandboxed code execution" was not exercised by any recorded run.
+Diagnosed and handled in Phase 11 (`docs/phase11-findings.md`).
+
+**8. Metrics that measured the model's style.** Time to first hypothesis
+equals wall time in every run (F6c); decoy *mentions* are 0 everywhere
+for the same reason — this model emits no interim prose — so decoy
+*citations* (item 3) are the real signal. Cost reads `n/a` (F7).
 
 ### F6a. `too_soon` protects the verdict, not the bill
 
@@ -226,6 +325,20 @@ The model emits no interim prose between tool calls, so the first
 assistant text containing the culprit is the final report; metric 11
 collapses onto metric 10 in every run. Reported as measured, and noted
 as a property of this model's tool-calling style rather than a result.
+
+### F6e. The ablation ledgers re-checked against the wrong engine
+
+Every A1 run file records `ledger re-check … FAIL` (3–6 mismatches). The
+runner re-executes the ledger against `scripts/ledger-check.py`'s default
+engine, `:8791` — the main engine — while A1's entries were issued by the
+ablation engine on `:8794`, whose bundles and watermarks digest differently
+by design (no template candidates, `w_n = 0`, the `ablation` stamp). The
+last A1 ledger re-checked against `:8794` the moment the matrix ended:
+**11 match, 0 mismatch, 4 skipped → PASS**; against `:8791`, 6/5/4 → FAIL,
+exactly as recorded. The verdicts in the run files are kept as they were
+written; the checker now takes `--engine` and the runner passes the
+issuing engine's URL. The Spyglass rows (main engine) were unaffected:
+9/9 PASS.
 
 ### F7. Loose ends, stated
 

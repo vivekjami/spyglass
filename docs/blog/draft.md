@@ -337,21 +337,92 @@ taught:
   until `bench/price-sheet.json` is filled from the provider's sheet;
   tokens stand as the proxy rather than an invented dollar figure.
 
-## The benchmark ⏳ (numbers land with the report)
+## The benchmark
 
-*Populated by `bench/report.py` from committed run files. Method: same model,
-same harness, same information access, same action path; baseline vs.
-Spyglass vs. no-novelty ablation; S1–S3 and S6 × 3 repeats; n=3 is a hackathon
-budget, not a study, and no significance is claimed.*
+Same model (`gemini-3-6-flash`), same harness, same incident, same
+information access, same gated action path; three conditions — raw tools,
+the evidence plane, the evidence plane with novelty switched off — over four
+scenarios, three repeats each, one fresh incident per cell, 36 runs in 4 h
+23 min unattended, every run committed. The scorer is mechanical: a fenced
+verdict block at the end of every report, and every cited evidence id
+resolved to the engine's record and matched against ground truth written
+before the first run. n = 3 is a hackathon budget, not a study; nothing
+below claims significance. The full tables, with ranges and the file behind
+every number, are in `docs/benchmark.md`.
 
-## Results, including anything negative ⏳
+| | S1 deploy regression | S2 config-only release | S3 redis full, no change | S6 unobserved vendor |
+|---|---|---|---|---|
+| Success — baseline / Spyglass / no-novelty | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | 3/3 · 3/3 · 3/3 | **0/3 · 1/3 · 3/3** |
+| Tool calls | 19 · 18 · 21 | 26 · 30 · 39 | 14 · **8.7** · 10 | 29 · 27 · 22 |
+| Input tokens | 424k · 461k · 525k | 891k · 937k · 1253k | 210k · **139k** · 157k | 1328k · 705k · 400k |
+| Alert → RCA | 63 s · 78 s · 83 s | 102 s · 109 s · 126 s | 49 s · 46 s · 49 s | 125 s · 99 s · 81 s |
+
+## Results, including anything negative
+
+**The prediction was "faster, cheaper, more accurate". Two of those three
+did not happen on the scenarios with a cause in the telemetry.** The same
+model with `tail`, `grep` and `curl` found the deploy regression, the
+config-only release and the redis fill nine times out of nine. Accuracy on
+S1–S3 is a tie. Spyglass was cheaper on S3 — 8.7 calls and 139k tokens
+against 14 and 210k, every claim cited — and *more* expensive on S1 and S2,
+entirely in the action path: the causal check and the engine-judged
+verification, which the baseline does not have (it re-reads a metric twice
+and declares victory). What the evidence plane changes on those three is
+the shape of the work and what the postmortem is made of: 7–22 evidence
+ids per report, 91–100 % of the root-cause citations relevant, each
+re-checkable against the ledger. The baseline's claims cannot be re-checked
+at all. That is a property worth having; it is not the speed-up the README
+predicted.
+
+**The negative result is S6, and it is the most useful number in the
+table.** A latency-only symptom, no error, no change event, an unobserved
+vendor as the cause, and a benign deploy 130 seconds earlier as bait. The
+right answer is to refuse and say what would decide it. The no-novelty
+ablation refused three times out of three, each time with the
+correlation-window argument in its own words. Spyglass refused once and
+rolled the benign deploy back twice — once on five log-search hits it
+narrated as a cascade "following D-1", once on a `postgres insert slower
+than budget` warning that had been in the logs before and after the fault.
+The baseline never refused. **More evidence made the agent act.** The
+evidence plane handed the model material for a story, and the model told
+it. ADR-001 named exactly this failure mode as the thing the thesis had to
+avoid; the benchmark's job was to be able to catch it, and it did.
+
+**Two engine gaps came out of the same cell.** After the wrong rollback the
+engine "verified" recovery — its check judges the 5xx share and nothing
+else, and a latency-shaped incident has none. And nothing mechanical stops
+a proposal whose cited evidence contains no deploy-correlated change; the
+human at the gate is the only floor, and the matrix, by design, had none.
+Both are recorded rather than patched: the matrix stays the matrix.
+
+**Things the measurement itself got wrong.** The pre-registered evidence
+precision counts the causal check's and the verification's ids as
+non-relevant, so it prints 46 % on S2 where the root-cause citations are 88–100
+% — the metric's denominator, reported as scored, with the post-hoc number
+beside it and labelled. Time-to-first-hypothesis equals wall time because
+this model emits no interim prose. And the ablation runs' ledger re-checks
+all read FAIL because the checker talked to the main engine instead of the
+ablation engine that had issued the entries; re-run against the right one,
+11 match, 0 mismatch. The recorded verdicts stay recorded.
+
+**And one thing that never worked.** The harness sandbox failed its own
+bootstrap — `pip install pydantic` through its proxy, connection refused —
+in every run since Phase 3, so no sandboxed command ever ran: the SOP's
+`sleep 15` between verification checks fell back to the model polling the
+engine (which is where a third of Spyglass's S1/S2 calls went), and the
+baseline's one attempt to read a log file through the filesystem was
+refused with the same error. Symmetric, so the comparison stands; a hole
+in the harness integration all the same, diagnosed in Phase 11.
 
 ## Limitations
 
-n=3 · self-authored scenarios (mitigated by pre-registered ground truth and
-committed raw runs, not eliminated) · one incident domain · the causal replay
-runs on the evidence plane rather than in the harness sandbox (see Phase 0) ·
-⏳ *more as they are found.*
+n=3 · one model · self-authored scenarios (mitigated by pre-registered
+ground truth and committed raw runs, not eliminated) · one incident domain ·
+the causal replay runs on the evidence plane rather than in the harness
+sandbox (Phase 0) · the sandbox never executed a command in a recorded run
+(Phase 10) · the gate was simulated as approving in the matrix, so "wrong
+action" means "wrong proposal" · the scenarios' fast timelines are minutes
+long; a real incident's baseline is days.
 
 ## What would be built next
 
