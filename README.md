@@ -4,7 +4,7 @@
 
 An incident-investigation agent built on **TrueForge** (TrueFoundry's open-source agent harness), backed by a purpose-built **Rust evidence engine** that transforms high-volume production telemetry into bounded, ranked, auditable evidence — served to the agent over **MCP** — with **sandbox causal verification**, a **human approval gate** for irreversible actions, and **post-action verification** before any incident is closed.
 
-**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–3 complete; live position in [`docs/progress.md`](docs/progress.md).
+**Status:** Hackathon build — The Agent Harness Hackathon (WeMakeDevs × TrueFoundry × Qodo), Aug 24–30, 2026. Phases 0–4 complete; live position in [`docs/progress.md`](docs/progress.md).
 **Author:** Vivek Jami — solo.
 **License:** MIT.
 **This document is the source of truth for the build.** If code and this README disagree, fix one of them in the same PR.
@@ -678,8 +678,8 @@ spyglass/                         ✓ built   ○ planned (phase)
 ├── crates/
 │   ├── rawtools-mcp/             ✓ the BASELINE's tools: tail_logs, grep_logs, get_metric, list_services, deploy_events
 │   ├── spyglass-core/            ✓ Event/DeployEvent/Window types, config, masking → template ids, canonical digests, ledger entries
-│   ├── spyglass-engine/          ✓ store + tailers + scraper + tools + investigations/ledger (ingest/index as modules; detect P4/P5, rank P6/P7 land here)
-│   ├── spyglass-mcp/             ✓ rmcp server: 6 read tools, bounds, eids, digests, latency
+│   ├── spyglass-engine/          ✓ store + tailers + scraper + Drain miner + novelty + tools + investigations/ledger (changepoints P5, rank P6/P7 land here)
+│   ├── spyglass-mcp/             ✓ rmcp server: 7 read tools (novel_templates is the headline), bounds, eids, digests, latency
 │   └── spyglass-cli/             ○ inspect | ingest --replay (later)
 ├── deployer/                     ✓ Rust lib + CLI + `serve`: the mutating MCP server (rollback, gated; current_versions)
 ├── target-system/
@@ -691,7 +691,7 @@ spyglass/                         ✓ built   ○ planned (phase)
 │   ├── s1-payment-regression/    ✓ README (measured acceptance), ground-truth.yaml, inject.sh, noise.yaml
 │   └── s2 … s6                   ○ (P10)
 ├── bench/
-│   ├── conditions/               ✓ baseline.json, spyglass.json + README (fairness checklist)   ○ ablation (P10)
+│   ├── conditions/               ✓ baseline.json, spyglass.json, ablation-no-novelty.json + README (fairness checklist)
 │   ├── results/                  ✓ one JSON per investigation: metrics + full event trace
 │   └── report.py                 ○ aggregates results → docs/benchmark.md tables (P10)
 ├── ledger/                       ✓ per-investigation JSONL + evidence records (gitignored; written by the engine)

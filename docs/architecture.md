@@ -26,7 +26,7 @@ this file never describes code that does not exist.
 |---|---|---|---|
 | C1 | Telemetry ingestion (tailer, normalizer, scraper, backpressure) | Phase 3 | built: tailers + scraper; backpressure = poll cadence, no spill file yet |
 | C2 | Evidence store and index (NDJSON segments, template/text/metric indexes) | Phase 3 | built: in-memory store + template index + metric rings; segments written, not yet read |
-| C3 | Novelty detection (Drain-style mining, novelty scoring) | Phase 4 | not started |
+| C3 | Novelty detection (Drain-style mining, novelty scoring) | Phase 4 | built: level-aware Drain, first-seen/burst scoring with history guards, `novel_templates`; 12 unit tests |
 | C4 | Changepoint detection (guarded rolling z-score, deploy correlation) | Phase 5 | not started |
 | C5 | Evidence ranking (hand-weighted linear model) | Phase 6 | not started |
 | C6 | Evidence bundle generation (bounds, coverage, relationships) | Phase 7 | not started |
@@ -123,8 +123,10 @@ data/deploy/journal ─tail─▶                        │
 | `spyglass-engine` | `Store` + ingest (log/journal tailers on threads, async metrics scraper) + the tools + `Investigation` (eid counter, evidence store, ledger writer) | the spec's ingest/index/detect/rank crates live here as modules until they earn a split |
 | `spyglass-mcp` | the read-only `rmcp` server (:8791): stamps eids, computes digests, writes the ledger, attaches `meta` | there is no mutating tool here and never will be |
 
-**Phase 3 shape, stated plainly:** templates are masking-based (numbers, ids,
-hex, timestamps, currency codes → `<*>`) with no Drain tree yet; `search_logs`
+**Shape after Phase 4:** templates are masked (numbers, ids, hex,
+timestamps, currency codes → `<*>`) then routed through a level-aware Drain
+tree that owns identity; `novel_templates` scores first-seen and burst novelty
+against a history-clipped baseline. `search_logs`
 scores by IDF-weighted term fraction plus a phrase bonus — explainable, not
 clever; metrics are ingested and watermarked but no tool reads them yet; the
 store is rebuilt from the source log files on start (≈10 s for 400k lines)

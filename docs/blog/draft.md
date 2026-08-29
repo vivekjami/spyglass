@@ -143,7 +143,27 @@ This section is the honest part. Written as it happens.
   engine: five matched to the byte, one temporal entry skipped by design.
   The property ADR-004 promised is a script that exits non-zero.
 
-### Phase 4 onward ⏳
+### Phase 4 — novelty, and the false positive that almost shipped
+
+- **The quiet-window check earned its place on the first run.** With the
+  seeded template correctly at #1, the *quiet* window before the fault also
+  scored every steady template at 0.84–1.0 — because the baseline window fell
+  before the engine's history began, so every template had zero baseline
+  events, floored to one, and steady traffic looked like a 64× burst. A
+  caveat flag had already named the condition; the scores shipped anyway.
+  Now the baseline is clipped to real history and, below 60 s of it, burst
+  novelty is *undetermined*, not inflated. The acceptance test the spec asked
+  for is the reason this is a footnote and not a demo-day discovery.
+- **Drain over-merged the one distinction that matters.** `request
+  completed` and `request failed` share one token of two — exactly the 0.5
+  threshold — and became `request <*>`. Two rules fixed it, both defensible
+  without S1 in mind: the log level is the leading token of a template's
+  identity, and a merge needs at least two agreeing positions.
+- **Masking did the work on this corpus.** Drain's merge fires in the unit
+  tests, not on S1, whose variables are all maskable. Said plainly so the
+  algorithm is not credited for the corpus.
+
+### Phase 5 onward ⏳
 
 ## The benchmark ⏳
 
