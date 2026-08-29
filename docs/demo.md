@@ -33,7 +33,31 @@ just watch                                # A: green — 0.0% 5xx, payments=v1
 
 Reset between takes: `./target/release/deployer --data-dir data/deploy rollback payments v1 --request-id $(uuidgen)`.
 
-### 0:10–0:30 — Naive agent drowns — Phase 2 (footage captured then, not reshot)
+### 0:10–0:30 — Naive agent drowns ✅ available (Phase 2) — **film this once, keep every take**
+
+Three windows: the TrueForge session page (the star), the runner terminal, and
+`just watch`. The footage is played at 8× in the cut, so let it run long.
+
+```bash
+just mcp-up && just tf-setup                    # once: rollback + raw tools registered, agent 'spyglass-baseline'
+S1_FAST=1 just scenario s1                      # fresh incident (≈4 min); or deploy payments v2 by hand
+just watch                                      # window C: alert fires within ~15 s of the fault
+just investigate baseline --approval ask        # window B: prints the session URL -- open it in window A
+#   the agent pages raw logs; the terminal prints per-turn tool calls and tokens
+#   if it proposes a rollback, the gate shows in A and B asks y/N -- approving is fine for the take
+#   result: bench/results/s1-baseline-<run>.json  (this is demo segment 8's baseline row)
+```
+
+What the camera should catch: raw log walls scrolling in the session, the
+tool-call counter climbing, the token totals in the terminal. Freeze the last
+frame on the totals line.
+
+**Narration, honestly** (Phase 2 F6): the baseline *does* find it on S1 — in
+~40 s, for ~200k input tokens and 57 KB of raw log paged into context. The
+line is "it got there — at two hundred thousand tokens; watch the context
+grow", not "it failed". The accuracy story belongs to S2/S3/S6.
+
+Between takes: `S1_FAST=1 just scenario s1` again (clean state, new run id).
 ### 0:45–2:45 — Phase 3–9
 ### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
 

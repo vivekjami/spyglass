@@ -1,40 +1,26 @@
-//! Spyglass deployer: the control plane for the target system.
+//! deployer CLI, plus `serve`: the mutating MCP server.
 //!
-//! This is the *write plane*. The evidence engine never touches it. It owns
-//! two files under `--data-dir` (bind-mounted read-only into the services):
-//!
-//!   current.json   which version each service is routed to (orders reads it
-//!                  per request, so a switch takes effect with no restart)
-//!   journal.jsonl  append-only record of every deploy / rollback / no-op --
-//!                  the highest-prior evidence class, tailed by the engine
-//!
-//! `deploy` is scenario tooling and is never exposed to the agent. `rollback`
-//! is the one mutating action the agent may propose: idempotent on
-//! `--request-id`, and it refuses to act if the world moved since the proposal
-//! (`--expected-current`). Both live here from Phase 1 because they are twenty
-//! lines each and the Phase 3 MCP server should wrap tested behaviour rather
-//! than grow its own.
+//! `serve` exposes exactly one mutating tool, `rollback`, and one read-only
+//! helper, `current_versions`. It is a *separate* MCP server from the evidence
+//! engine on purpose (README, Safety Model): the read plane and the write
+//! plane never share a process, and the agent manifest marks `rollback`
+//! approval-required. `deploy` is deliberately absent here.
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{path::PathBuf, sync::Mutex};
 
-use anyhow::{Context, Result, bail};
-use chrono::{SecondsFormat, Utc};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
-use serde::{Deserialize, Serialize};
+use deployer::{RollbackOutcome, Store};
+use rmcp::{
+    ErrorData as McpError, ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::*,
+    schemars, tool, tool_handler, tool_router,
+    transport::streamable_http_server::{
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
+    },
+};
 use uuid::Uuid;
-
-/// Every version that exists as a runnable artifact. A deploy to anything
-/// else is a typo, not a deployment.
-const KNOWN_VERSIONS: &[(&str, &[&str])] = &[
-    ("gateway", &["v1"]),
-    ("orders", &["v1", "v1.1"]),
-    ("payments", &["v1", "v2"]),
-];
 
 #[derive(Parser)]
 #[command(name = "deployer", version, about)]
@@ -79,259 +65,163 @@ enum Cmd {
     Current { service: Option<String> },
     /// Print the journal.
     Journal,
+    /// Run the mutating MCP server (streamable HTTP at /mcp). Tools: rollback, current_versions.
+    Serve {
+        #[arg(long, default_value_t = 8792)]
+        port: u16,
+    },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct ServiceState {
-    version: String,
-    deploy_id: Option<String>,
-    since: String,
+// ------------------------------------------------------------------ MCP
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RollbackArgs {
+    /// Service to roll back (gateway | orders | payments).
+    pub service: String,
+    /// Version to roll back to, e.g. "v1".
+    pub to_version: String,
+    /// A fresh UUID you generate for this proposal. Re-sending the same id is a recorded no-op, never a second rollback.
+    pub request_id: String,
+    /// The version you observed as current when you formed this proposal. If it no longer matches, the rollback is refused.
+    pub expected_current: Option<String>,
+    /// Evidence ids (E1, E2, ...) that justify this action. Pass [] if none.
+    /// (A plain array, not Option<Vec>: Gemini's function-declaration
+    /// validator rejects the anyOf[array, null] schema schemars emits for an
+    /// optional list -- "items: missing field". Learned in Phase 2.)
+    #[serde(default)]
+    pub justification_eids: Vec<String>,
 }
 
-type State = BTreeMap<String, ServiceState>;
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Entry {
-    n: u64,
-    kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    deploy_id: Option<String>,
-    service: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    from_version: Option<String>,
-    ts: String,
-    actor: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    request_id: Option<Uuid>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    justification_eids: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    note: Option<String>,
+#[derive(Clone)]
+pub struct DeployerMcp {
+    store: std::sync::Arc<Mutex<Store>>,
+    tool_router: ToolRouter<DeployerMcp>,
 }
 
-struct Store {
-    state_path: PathBuf,
-    journal_path: PathBuf,
-}
-
-impl Store {
-    fn new(dir: &Path) -> Self {
-        Self { state_path: dir.join("current.json"), journal_path: dir.join("journal.jsonl") }
+#[tool_router]
+impl DeployerMcp {
+    fn new(store: Store) -> Self {
+        Self { store: std::sync::Arc::new(Mutex::new(store)), tool_router: Self::tool_router() }
     }
 
-    fn load_state(&self) -> Result<State> {
-        let s = fs::read_to_string(&self.state_path)
-            .with_context(|| format!("read {}; run `deployer init` first", self.state_path.display()))?;
-        Ok(serde_json::from_str(&s)?)
+    /// The ONE mutating action. Approval-required in the agent manifest.
+    #[tool(description = "Roll a service back to a version. MUTATING; requires human approval. Idempotent on request_id; refused if expected_current no longer matches the live version. Returns the journal entry and an outcome: executed | noop | aborted.")]
+    fn rollback(&self, Parameters(a): Parameters<RollbackArgs>) -> Result<CallToolResult, McpError> {
+        let rid = Uuid::parse_str(&a.request_id)
+            .map_err(|e| McpError::invalid_params(format!("request_id must be a UUID: {e}"), None))?;
+        let store = self.store.lock().map_err(|_| McpError::internal_error("store lock poisoned", None))?;
+        let (entry, outcome) = deployer::rollback(
+            &store,
+            &a.service,
+            &a.to_version,
+            rid,
+            a.expected_current.as_deref(),
+            "agent",
+            a.justification_eids,
+        )
+        .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+        let body = serde_json::json!({
+            "outcome": outcome,
+            "journal_entry": entry,
+            "note": match outcome {
+                RollbackOutcome::Executed => "routing changed; verify recovery from telemetry before closing the incident",
+                RollbackOutcome::Noop => "nothing changed",
+                RollbackOutcome::Aborted => "refused: the live version differs from expected_current; re-check and re-propose",
+            },
+        });
+        Ok(CallToolResult::success(vec![ContentBlock::text(body.to_string())]))
     }
 
-    /// Write-then-rename: readers on the read-only bind mount never see a torn file.
-    fn save_state(&self, state: &State) -> Result<()> {
-        let tmp = self.state_path.with_extension("json.tmp");
-        fs::write(&tmp, serde_json::to_vec_pretty(state)?)?;
-        fs::rename(&tmp, &self.state_path)?;
-        Ok(())
-    }
-
-    fn read_journal(&self) -> Result<Vec<Entry>> {
-        if !self.journal_path.exists() {
-            return Ok(vec![]);
-        }
-        let text = fs::read_to_string(&self.journal_path)?;
-        // The journal is its own WAL: a crash mid-append leaves at most one
-        // torn final line, which we skip rather than refuse to load.
-        Ok(text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect())
-    }
-
-    fn append(&self, e: &Entry) -> Result<()> {
-        let mut f = fs::OpenOptions::new().create(true).append(true).open(&self.journal_path)?;
-        serde_json::to_writer(&mut f, e)?;
-        f.write_all(b"\n")?;
-        f.flush()?;
-        Ok(())
-    }
-
-    /// (next line number, next deploy id). Deploy ids count only entries that
-    /// changed routing, so from a clean state they are deterministic: D-1, D-2, ...
-    fn next_ids(&self) -> Result<(u64, String)> {
-        let j = self.read_journal()?;
-        let n = j.len() as u64 + 1;
-        let d = j.iter().filter(|e| e.deploy_id.is_some()).count() as u64 + 1;
-        Ok((n, format!("D-{d}")))
+    #[tool(description = "Read-only: which version each service is currently routed to, and the deploy id that put it there.")]
+    fn current_versions(&self) -> Result<CallToolResult, McpError> {
+        let store = self.store.lock().map_err(|_| McpError::internal_error("store lock poisoned", None))?;
+        let state = store.load_state().map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(serde_json::to_string(&state).unwrap_or_default())]))
     }
 }
 
-fn now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
-}
-
-fn check_known(service: &str, version: &str) -> Result<()> {
-    match KNOWN_VERSIONS.iter().find(|(s, _)| *s == service) {
-        None => bail!(
-            "unknown service '{service}'; known: {}",
-            KNOWN_VERSIONS.iter().map(|(s, _)| *s).collect::<Vec<_>>().join(", ")
-        ),
-        Some((_, vs)) if !vs.contains(&version) => {
-            bail!("unknown version '{version}' for {service}; known: {}", vs.join(", "))
-        }
-        _ => Ok(()),
+#[tool_handler]
+impl ServerHandler for DeployerMcp {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::from_build_env())
+            .with_instructions(
+                "Spyglass deployer. `rollback` is the only mutating action and requires human approval; \
+                 pass a fresh UUID request_id and the current version you observed as expected_current. \
+                 `current_versions` is read-only."
+                    .to_string(),
+            )
     }
 }
 
-fn emit(e: &Entry) -> Result<()> {
+fn emit(e: &deployer::Entry) -> Result<()> {
     println!("{}", serde_json::to_string(e)?);
     Ok(())
 }
 
-fn entry(n: u64, kind: &str, service: &str, actor: &str) -> Entry {
-    Entry {
-        n,
-        kind: kind.into(),
-        deploy_id: None,
-        service: service.into(),
-        version: None,
-        from_version: None,
-        ts: now(),
-        actor: actor.into(),
-        request_id: None,
-        justification_eids: vec![],
-        note: None,
-    }
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    fs::create_dir_all(&cli.data_dir)?;
+    std::fs::create_dir_all(&cli.data_dir)?;
     let store = Store::new(&cli.data_dir);
 
     match cli.cmd {
-        Cmd::Init { reset } => {
-            if store.state_path.exists() && !reset {
+        Cmd::Init { reset } => match deployer::init(&store, reset)? {
+            Some(e) => emit(&e),
+            None => {
                 println!("{}", serde_json::to_string_pretty(&store.load_state()?)?);
-                return Ok(());
+                Ok(())
             }
-            if reset && store.journal_path.exists() {
-                let rotated = cli
-                    .data_dir
-                    .join(format!("journal-{}.jsonl", Utc::now().format("%Y%m%dT%H%M%SZ")));
-                fs::rename(&store.journal_path, &rotated)?;
-            }
-            let ts = now();
-            let state: State = KNOWN_VERSIONS
-                .iter()
-                .map(|(s, _)| {
-                    (s.to_string(), ServiceState { version: "v1".into(), deploy_id: None, since: ts.clone() })
-                })
-                .collect();
-            store.save_state(&state)?;
-            let (n, _) = store.next_ids()?;
-            let mut e = entry(n, "init", "*", "operator");
-            e.version = Some("v1".into());
-            e.note = Some("all services at v1".into());
-            store.append(&e)?;
-            emit(&e)
-        }
-
-        Cmd::Deploy { service, version, actor } => {
-            check_known(&service, &version)?;
-            let mut state = store.load_state()?;
-            let cur = state.get(&service).cloned().context("service missing from state")?;
-            let (n, deploy_id) = store.next_ids()?;
-            let mut e = entry(n, "deploy", &service, &actor);
-            e.deploy_id = Some(deploy_id.clone());
-            e.version = Some(version.clone());
-            e.from_version = Some(cur.version);
-            state.insert(service, ServiceState { version, deploy_id: Some(deploy_id), since: e.ts.clone() });
-            store.save_state(&state)?;
-            store.append(&e)?;
-            emit(&e)
-        }
-
+        },
+        Cmd::Deploy { service, version, actor } => emit(&deployer::deploy(&store, &service, &version, &actor)?),
         Cmd::Rollback { service, to_version, request_id, expected_current, actor, justification_eids } => {
-            let journal = store.read_journal()?;
-            let n = journal.len() as u64 + 1;
-
-            // Idempotency: a request_id we already acted on is a recorded
-            // no-op, never a second rollback. Double-fire is the expected
-            // failure mode of a retrying agent, and it must be harmless.
-            if let Some(orig) = journal.iter().find(|e| e.request_id == Some(request_id) && e.kind == "rollback") {
-                let mut e = entry(n, "noop", &service, &actor);
-                e.version = Some(to_version);
-                e.request_id = Some(request_id);
-                e.justification_eids = justification_eids;
-                e.note = Some(format!(
-                    "duplicate request_id; original entry n={} deploy_id={}",
-                    orig.n,
-                    orig.deploy_id.clone().unwrap_or_default()
-                ));
-                store.append(&e)?;
-                return emit(&e);
+            let (e, outcome) = deployer::rollback(
+                &store, &service, &to_version, request_id, expected_current.as_deref(), &actor, justification_eids,
+            )?;
+            emit(&e)?;
+            if outcome == RollbackOutcome::Aborted {
+                std::process::exit(2);
             }
-
-            check_known(&service, &to_version)?;
-            let mut state = store.load_state()?;
-            let cur = state.get(&service).cloned().context("service missing from state")?;
-
-            // TOCTOU: the proposal named the version it was made against. If
-            // the world moved between approval and execution, refuse and
-            // make the agent re-propose against reality.
-            if let Some(exp) = expected_current.as_deref() {
-                if exp != cur.version {
-                    let mut e = entry(n, "aborted", &service, &actor);
-                    e.version = Some(to_version);
-                    e.from_version = Some(cur.version.clone());
-                    e.request_id = Some(request_id);
-                    e.justification_eids = justification_eids;
-                    e.note = Some(format!(
-                        "version mismatch: proposal expected current={exp}, actual current={}",
-                        cur.version
-                    ));
-                    store.append(&e)?;
-                    emit(&e)?;
-                    std::process::exit(2);
-                }
-            }
-
-            if cur.version == to_version {
-                let mut e = entry(n, "noop", &service, &actor);
-                e.version = Some(to_version);
-                e.from_version = Some(cur.version);
-                e.request_id = Some(request_id);
-                e.justification_eids = justification_eids;
-                e.note = Some("already at requested version".into());
-                store.append(&e)?;
-                return emit(&e);
-            }
-
-            let (n, deploy_id) = store.next_ids()?;
-            let mut e = entry(n, "rollback", &service, &actor);
-            e.deploy_id = Some(deploy_id.clone());
-            e.version = Some(to_version.clone());
-            e.from_version = Some(cur.version);
-            e.request_id = Some(request_id);
-            e.justification_eids = justification_eids;
-            state.insert(service, ServiceState { version: to_version, deploy_id: Some(deploy_id), since: e.ts.clone() });
-            store.save_state(&state)?;
-            store.append(&e)?;
-            emit(&e)
+            Ok(())
         }
-
         Cmd::Current { service } => {
             let state = store.load_state()?;
             match service {
-                Some(s) => println!("{}", serde_json::to_string(state.get(&s).context("unknown service")?)?),
+                Some(s) => println!("{}", serde_json::to_string(state.get(&s).ok_or_else(|| anyhow::anyhow!("unknown service"))?)?),
                 None => println!("{}", serde_json::to_string_pretty(&state)?),
             }
             Ok(())
         }
-
         Cmd::Journal => {
             for e in store.read_journal()? {
                 emit(&e)?;
             }
             Ok(())
         }
+        Cmd::Serve { port } => serve(store, port),
     }
+}
+
+#[tokio::main]
+async fn serve(store: Store, port: u16) -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .init();
+    let ct = tokio_util::sync::CancellationToken::new();
+    let mcp = DeployerMcp::new(store);
+    let service = StreamableHttpService::new(
+        move || Ok(mcp.clone()),
+        LocalSessionManager::default().into(),
+        StreamableHttpServerConfig::default().with_cancellation_token(ct.child_token()),
+    );
+    let router = axum::Router::new().nest_service("/mcp", service);
+    let addr = format!("127.0.0.1:{port}");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("deployer MCP server (rollback, current_versions) on http://{addr}/mcp");
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            ct.cancel();
+        })
+        .await?;
+    Ok(())
 }

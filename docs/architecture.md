@@ -31,9 +31,9 @@ this file never describes code that does not exist.
 | C5 | Evidence ranking (hand-weighted linear model) | Phase 6 | not started |
 | C6 | Evidence bundle generation (bounds, coverage, relationships) | Phase 7 | not started |
 | C7 | MCP server (`rmcp`, streamable HTTP) | Phase 3 | probe validated (Phase 0) |
-| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | not started |
+| C8 | Agent SOP (lead prompt + analyst instructions) | Phase 3 | baseline SOP built (Phase 2, the control); Spyglass SOP not started |
 | C9 | Causal verification (exemplar replay) | Phase 8 | sandbox reach **failed** (Phase 0, F9) → replay-as-MCP-tool planned |
-| C10 | Human approval gate | Phase 9 | mechanism validated (Phase 0); deployer-side idempotency + TOCTOU built (Phase 1) |
+| C10 | Human approval gate | Phase 9 | live: `rollback` MCP tool gated via `require_approval_for_tools` (Phase 2); idempotency + TOCTOU in the deployer lib (Phase 1) |
 | C11 | Post-action verification loop | Phase 9 | not started |
 
 ## Harness integration (validated in Phase 0)
@@ -85,6 +85,8 @@ loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
 | `payments` | one codebase, two always-on instances; `v2` carries S1's seeded `UnsupportedCurrency` regression plus two benign novel INFO templates as decoys | `target-system/payments/` |
 | `loadgen` | deterministic mixed traffic: 20% non-USD (the S1 failure class), 2% malformed, 1% injection-styled user-agents, seeded WARN chatter | `target-system/loadgen/` |
 | `deployer` | Rust CLI: `init`, `deploy`, `rollback`, `current`, `journal`. Atomic state writes; append-only journal that is its own WAL; rollback is idempotent on `request_id` and aborts on a TOCTOU version mismatch | `deployer/` |
+| `deployer serve` | the **mutating MCP server** (:8792): `rollback` — approval-required in every agent manifest — and read-only `current_versions`. Same tested lib the CLI uses; `deploy` deliberately absent | `deployer/src/main.rs` |
+| `rawtools-mcp` | the **baseline's MCP server** (:8793): `list_services`, `tail_logs`, `grep_logs`, `get_metric`, `deploy_events` — raw lines, generous caps, truncation reported, no shaping | `crates/rawtools-mcp/` |
 | `watch` | error-rate dashboard + threshold alert (ADR-013's terminal dashboard); on alert, opens a TrueForge session with the alert as its first turn — `SPYGLASS_AGENT` selects which agent answers | `scripts/watch.py` |
 | scenarios | pre-registered ground truth (`SCHEMA.md`), injector, noise profile, reproducibility check | `scenarios/` |
 

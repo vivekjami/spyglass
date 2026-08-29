@@ -37,6 +37,21 @@ scenario name:
     just up
     bash scenarios/{{name}}-*/inject.sh
 
+# Start the MCP servers the agents use: deployer (rollback, :8792) and rawtools (baseline, :8793).
+mcp-up:
+    scripts/mcp.sh start
+
+mcp-down:
+    scripts/mcp.sh stop
+
+# Register MCP servers + every bench/conditions/*.json as a named TrueForge agent (idempotent).
+tf-setup:
+    python3 scripts/tf-setup.py
+
+# Run one instrumented investigation: `just investigate baseline` (add: --approval allow|deny|ask, --tag ...).
+investigate condition *args:
+    python3 scripts/investigate.py --condition {{condition}} {{args}}
+
 # Live error-rate dashboard + threshold alert (the watcher).
 watch:
     python3 scripts/watch.py

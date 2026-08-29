@@ -1,0 +1,21 @@
+{
+  "name": "spyglass-baseline",
+  "description": "BASELINE condition: the same model, harness, information access and action path as Spyglass, with raw telemetry tools instead of the evidence plane (ADR-012).",
+  "instructions_file": "agent/baseline-sop.md",
+  "model": { "name": "$MODEL_A" },
+  "mcp_servers": [
+    { "name": "spyglass-rawtools", "enable_tools": ["@all"], "preload": true },
+    { "name": "spyglass-deployer", "enable_tools": ["@all"], "preload": true, "require_approval_for_tools": ["rollback"] }
+  ],
+  "config": {
+    "iteration_limit": 80,
+    "sandbox": { "enabled": true },
+    "ask_user_questions": { "enabled": false },
+    "dynamic_sub_agents": { "enabled": true },
+    "generative_ui": { "enabled": false },
+    "context_management": {
+      "compaction": { "enabled": false },
+      "large_tool_response": { "enabled": false }
+    }
+  }
+}
