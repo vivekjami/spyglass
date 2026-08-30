@@ -298,6 +298,9 @@
     else if(e.key==='p'){window.print()}
   });
   addEventListener('click',e=>{ if(!e.target.closest('footer')) show(i+1) });
+  // ?clean in the query string starts in clean mode -- lets a script record a
+  // card with no presenter chrome, without sending a keystroke.
+  if(/(^|[?&])clean\b/.test(location.search)) document.body.classList.add('clean');
   show(parseInt(location.hash.slice(1))-1||0);
 </script>
 </body>

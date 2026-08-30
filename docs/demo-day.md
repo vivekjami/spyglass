@@ -155,7 +155,29 @@ this document works.
 
 **Nothing is installed on this machine.** Two paths:
 
-### Path A — recommended: OBS + ffmpeg
+### Path A — recommended: scripted, from the terminal
+
+`scripts/record.py` drives GNOME's own screencast over D-Bus, so a clip can be
+started and stopped around an exact command instead of by hand:
+
+```bash
+scripts/record.py ~/spyglass-recordings/c3.webm --secs 90
+scripts/record.py ~/spyglass-recordings/c3.webm --until-file /tmp/done   # stop on a signal
+scripts/record.py ~/spyglass-recordings/card.webm --secs 10 --area 0,0,1920,1080
+```
+
+It records **video only** (1920×1080, ~22–30 fps VP8) — the voiceover is laid
+on at the end with ffmpeg. A one-shot `gdbus call` will *not* work: GNOME ties
+the screencast to the calling D-Bus connection, so it stops after a single
+frame. That is what this script exists to hold open.
+
+You still need `ffmpeg` for the 8× speed-up, the joins and the voiceover mux:
+
+```bash
+sudo apt install -y ffmpeg
+```
+
+### Path B — OBS + ffmpeg (if you want a visible record indicator)
 
 ```bash
 sudo apt install -y obs-studio ffmpeg
