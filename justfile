@@ -18,7 +18,7 @@ build:
 
 # Bring the target system up (creates data dirs, initialises deploy state).
 up: 
-    mkdir -p data/logs data/deploy
+    mkdir -p data/logs data/deploy data/knobs
     {{deployer}} --data-dir data/deploy init >/dev/null
     docker compose up -d --wait
     @echo "target system up: gateway http://127.0.0.1:${GATEWAY_PORT:-8080}  orders :${ORDERS_PORT:-8081}  payments-v1 :${PAYMENTS_V1_PORT:-8082}  payments-v2 :${PAYMENTS_V2_PORT:-8083}"
@@ -29,15 +29,17 @@ down:
 # Stop everything and wipe runtime data (logs, deploy state, postgres). Scenario runs are kept.
 clean:
     docker compose down -v --remove-orphans 2>/dev/null || true
-    rm -rf data/logs data/deploy data/segments
+    rm -rf data/logs data/deploy data/segments data/segments-no-novelty data/knobs
 
-# Run a scenario from clean state: `just scenario s1`. S1_FAST=1 shortens the timeline.
+# Run a scenario from clean state: `just scenario s1` (s1 | s2 | s3 | s6). SCENARIO_FAST=1 (or S1_FAST=1) shortens the timeline.
+# The evidence engines are restarted before the injection so their history is the scenario's alone.
 scenario name:
     just clean
     just up
+    scripts/mcp.sh restart
     bash scenarios/{{name}}-*/inject.sh
 
-# Start the MCP servers the agents use: engine (evidence plane, :8791), deployer (rollback, :8792), rawtools (baseline, :8793).
+# Start the MCP servers the agents use: engine (evidence plane, :8791), deployer (rollback, :8792), rawtools (baseline, :8793), ablation engine (A1, :8794).
 mcp-up:
     scripts/mcp.sh start
 
@@ -59,6 +61,10 @@ watch:
 # Compare the last two S1 runs (or two named run dirs) against ground-truth tolerances.
 s1-check *args:
     python3 scripts/s1-curve.py --compare {{args}}
+
+# Scenario acceptance for any scenario: `just scenario-check s2` compares its last two runs (5xx curve, p95 latency) against ground truth.
+scenario-check name *args:
+    python3 scripts/scenario-curve.py --scenario {{name}} --compare {{args}}
 
 # Phase 5 acceptance on the latest S1 run: fault changepoint ±10 s + D-2 annotated, decoy deploy not blamed, steady state clean.
 s5-check *args:
@@ -95,5 +101,11 @@ demo:
 ledger-check file:
     python3 scripts/ledger-check.py {{file}}
 
-bench:
-    @echo "just bench is not built yet: it needs the benchmark runner (Phase 10)."; exit 1
+# THE benchmark: {baseline, spyglass, ablation-no-novelty} x {s1, s2, s3, s6} x 3 repeats, unattended (auto-approve), every run committed.
+# `just bench` runs the whole matrix (~3 h); `just bench --scenarios s1 --conditions spyglass --repeats 1` runs one cell.
+bench *args:
+    python3 bench/run.py {{args}}
+
+# Aggregate bench/results/*.json into the tables in docs/benchmark.md and README.md (never hand-edited).
+report:
+    python3 bench/report.py

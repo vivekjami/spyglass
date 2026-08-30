@@ -39,7 +39,7 @@ use uuid::Uuid;
 /// else is a typo, not a deployment.
 pub const KNOWN_VERSIONS: &[(&str, &[&str])] = &[
     ("gateway", &["v1"]),
-    ("orders", &["v1", "v1.1"]),
+    ("orders", &["v1", "v1.1", "v1.2"]), // v1.2: S2's config-only release
     ("payments", &["v1", "v2"]),
 ];
 

@@ -34,6 +34,7 @@ INSTANCE = os.environ.get("INSTANCE_NAME", SERVICE)
 VERSION = os.environ.get("SERVICE_VERSION", "v1")
 LOG_DIR = Path(os.environ.get("SPYGLASS_LOG_DIR", "/var/log/spyglass"))
 DEPLOY_STATE = Path(os.environ.get("SPYGLASS_DEPLOY_STATE", "/deploy/current.json"))
+KNOB_DIR = Path(os.environ.get("SPYGLASS_KNOB_DIR", "/knobs"))
 UNLOGGED_PATHS = {"/health", "/metrics"}
 
 req_id_var: ContextVar[str] = ContextVar("req_id", default="-")
@@ -45,7 +46,7 @@ def now_iso() -> str:
 
 # ---------------------------------------------------------------- logging
 _EXTRA_KEYS = ("route", "status", "latency_ms", "deploy_id", "kind", "upstream",
-               "upstream_version", "method", "path", "headers", "body", "replay")
+               "upstream_version", "method", "path", "headers", "body", "replay", "detail")
 
 
 class JsonFormatter(logging.Formatter):
@@ -140,6 +141,34 @@ def current_deploy(service: str) -> dict:
             return dict(_DEFAULT_DEPLOY)
     entry = _state_cache["data"].get(service) or {}
     return {"version": entry.get("version", "v1"), "deploy_id": entry.get("deploy_id")}
+
+
+_knob_cache: dict = {}
+
+
+def knob(name: str) -> dict:
+    """Scenario knobs: /knobs/<name>.json, read per request, cached on mtime.
+
+    Knobs are how a scenario changes the *environment* without a change
+    event -- the gateway's latency blip (S2's decoy) and the fraud vendor's
+    degradation (S6). They are not telemetry: no tool in either benchmark
+    condition reads this directory, and the services never log them. An
+    absent or malformed file means "no knob".
+    """
+    path = KNOB_DIR / f"{name}.json"
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        _knob_cache.pop(name, None)
+        return {}
+    c = _knob_cache.get(name)
+    if c is None or c[0] != st.st_mtime_ns:
+        try:
+            c = (st.st_mtime_ns, json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            c = (st.st_mtime_ns, {})
+        _knob_cache[name] = c
+    return c[1] if isinstance(c[1], dict) else {}
 
 
 # ---------------------------------------------------------------- app wiring

@@ -13,5 +13,7 @@ background:
   warn_chatter:
     orders_pg_slow_rate: 0.03       # "postgres insert slower than budget"
     gateway_slow_rate: 0.02         # "upstream latency above soft threshold"
+    payments_cache_hiccup_rate: 0.02  # ERROR "cache write failed: TimeoutError" (retried, ok) -- Phase 10, so S3's template is known-but-rare
+  fraud_vendor_v1_latency_ms: 3     # orders calls fraudcheck /v1/score synchronously (Phase 10; unobserved dependency)
 decoy_change:
   benign_deploy: {service: orders, version: v1.1, lead_secs_before_fault: 360}

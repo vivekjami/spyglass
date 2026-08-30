@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Run one instrumented investigation against the live (faulted) stack.
 
-The seed of the Phase 10 benchmark runner. One condition, one scenario, one
-run: open a session on the condition's named agent, post the alert, drive the
+One condition, one scenario, one run: open a session on the condition's named
+agent, post the scenario's alert (from its ground-truth.yaml), drive the
 approval gate per --approval, and record everything the benchmark scores --
 tool calls, model calls, tokens summed across every thread, bytes the tools
 returned to the context, wall time, approvals, whether a rollback executed,
-and the error rate after the agent finished. The full event trace is kept so
-a number can always be traced back to what happened.
+the edge error rate and p95 latency after the agent finished, the engine's
+verification verdict, and the ledger. The full event trace is kept so a
+number can always be traced back to what happened; bench/report.py scores
+from these files alone. bench/run.py calls this once per cell.
 
   scripts/investigate.py --condition baseline --scenario s1 --approval ask
 
@@ -19,6 +21,8 @@ a number can always be traced back to what happened.
 from __future__ import annotations
 
 import argparse
+import glob
+import hashlib
 import json
 import os
 import re
@@ -35,6 +39,9 @@ ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ROOT / "bench/results"
 MAX_TURNS = 8
 LINE = re.compile(r'^requests_total\{([^}]*)\}\s+([0-9.e+]+)$', re.M)
+HIST = re.compile(r'^latency_ms_bucket\{([^}]*)\}\s+([0-9.e+]+)$', re.M)
+DEFAULT_ALERT = ("payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold "
+                 "for 2 consecutive windows. Investigate; roll back if a deploy caused it.")
 
 
 def dotenv(key: str, default: str = "") -> str:
@@ -51,7 +58,10 @@ def now() -> str:
 
 
 def error_rate(seconds: float = 20.0) -> dict:
-    """5xx share of gateway /checkout over a short window, from /metrics deltas."""
+    """The edge over a short window, from /metrics deltas: 5xx share of gateway
+    /checkout and its p95 latency (from the histogram buckets). The runner's
+    own measurement of the world after the agent finished -- the same for
+    every condition, independent of what the agent claims."""
     url = f"http://127.0.0.1:{dotenv('GATEWAY_PORT', '8080')}/metrics"
 
     def scrape():
@@ -61,13 +71,56 @@ def error_rate(seconds: float = 20.0) -> dict:
             if 'route="/checkout"' in labels:
                 tot += float(val)
                 err += float(val) if 'status="5' in labels else 0.0
-        return tot, err
+        hist = {}
+        for labels, val in HIST.findall(txt):
+            if 'route="/checkout"' in labels:
+                le = re.search(r'le="([^"]+)"', labels)
+                if le:
+                    hist[le.group(1)] = hist.get(le.group(1), 0.0) + float(val)
+        return tot, err, hist
 
     a = scrape()
     time.sleep(seconds)
     b = scrape()
     dt, de = b[0] - a[0], b[1] - a[1]
-    return {"window_secs": seconds, "requests": dt, "errors": de, "rate": (de / dt) if dt else None}
+    p95 = None
+    deltas = {k: b[2].get(k, 0.0) - a[2].get(k, 0.0) for k in b[2]}
+    total = deltas.get("+Inf", 0.0)
+    if total > 0:
+        for le in sorted((k for k in deltas if k != "+Inf"), key=float):
+            if deltas[le] >= 0.95 * total:
+                p95 = float(le)
+                break
+        p95 = p95 if p95 is not None else float("inf")
+    return {"window_secs": seconds, "requests": dt, "errors": de, "rate": (de / dt) if dt else None,
+            "p95_latency_ms_le": p95 if p95 != float("inf") else ">5000"}
+
+
+def scenario_ground_truth(scenario: str) -> dict:
+    hits = sorted(glob.glob(str(ROOT / f"scenarios/{scenario}-*/ground-truth.yaml")))
+    if not hits:
+        return {}
+    try:
+        import yaml
+        return yaml.safe_load(Path(hits[0]).read_text()) or {}
+    except Exception:
+        return {}
+
+
+def scenario_run_manifest(scenario: str) -> dict | None:
+    """The injector's manifest of the latest run of this scenario (absolute
+    fault time etc.), embedded so the scorer needs nothing outside the result."""
+    runs = sorted((ROOT / "data/scenarios" / scenario).glob("*/manifest.json"))
+    if not runs:
+        return None
+    try:
+        return json.loads(runs[-1].read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def sha(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
 def journal() -> list[dict]:
@@ -88,9 +141,23 @@ def proposal_of(evs: list[dict], tool_call_id: str) -> dict:
     return {"name": "?", "arguments": None}
 
 
+# The evidence engines by their registered MCP server name (scripts/mcp.sh, scripts/tf-setup.py).
+ENGINE_URLS = {"spyglass-engine": "http://localhost:8791/mcp", "spyglass-engine-ablation": "http://localhost:8794/mcp"}
+
+
+def engine_server_of(evs: list[dict]) -> tuple[str | None, str | None]:
+    """(mcp session id, server name) of the evidence engine this run used."""
+    for e in evs:
+        if e.get("type") != "mcp.initialize":
+            continue
+        for s in e.get("mcp_servers", []):
+            if str(s.get("name", "")).startswith("spyglass-engine"):
+                return s.get("session_id"), s.get("name")
+    return None, None
+
+
 def engine_session_of(evs: list[dict]) -> str | None:
-    return next((s.get("session_id") for e in evs if e.get("type") == "mcp.initialize"
-                 for s in e.get("mcp_servers", []) if s.get("name") == "spyglass-engine"), None)
+    return engine_server_of(evs)[0]
 
 
 def ledger_entries(engine_sid: str | None) -> list[dict]:
@@ -130,12 +197,14 @@ def main() -> None:
     ap.add_argument("--approval", choices=["ask", "allow", "deny"], default="ask")
     ap.add_argument("--alert", help="override the alert text (default: the watcher's message)")
     ap.add_argument("--tag", default="", help="free-text label stored in the result")
+    ap.add_argument("--bench", action="store_true", help="mark the run as a benchmark run (bench/report.py aggregates only these)")
     a = ap.parse_args()
 
-    cond = json.loads((ROOT / "bench/conditions" / f"{a.condition}.json").read_text())
+    cond_path = ROOT / "bench/conditions" / f"{a.condition}.json"
+    cond = json.loads(cond_path.read_text())
     agent_name = cond["name"]
-    alert = a.alert or ("payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold "
-                        "for 2 consecutive windows. Investigate; roll back if a deploy caused it.")
+    gt = scenario_ground_truth(a.scenario)
+    alert = a.alert or (gt.get("alert") or "").strip() or DEFAULT_ALERT
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS / f"{a.scenario}-{a.condition}-{run_id}.json"
     RESULTS.mkdir(parents=True, exist_ok=True)
@@ -196,10 +265,20 @@ def main() -> None:
     totals = tf.usage_total(all_events)
     calls = tf.tool_calls(all_events)
 
+    execs = [json.loads(tc["function"]["arguments"]).get("command") if isinstance(tc["function"].get("arguments"), str) else (tc["function"].get("arguments") or {}).get("command")
+             for e in all_events if e.get("type") == "model.message" for tc in (e.get("tool_calls") or []) if tc["function"]["name"] == "exec"]
     result = {
         "scenario": a.scenario, "condition": a.condition, "agent": agent_name, "run_id": run_id, "tag": a.tag,
+        "benchmark": bool(a.bench),
+        "valid": outcome == "completed",
+        "invalid_reason": None if outcome == "completed" else outcome,
         "model": None, "started_at": started_at, "finished_at": now(),
         "alert": alert, "approval_policy": a.approval,
+        "ground_truth_version": gt.get("version"),
+        "scenario_run": scenario_run_manifest(a.scenario),
+        "provenance": {"condition_file": str(cond_path.relative_to(ROOT)), "condition_sha256": sha(cond_path),
+                       "instructions_file": cond.get("instructions_file"),
+                       "instructions_sha256": sha(ROOT / cond["instructions_file"]) if cond.get("instructions_file") else None},
         "outcome": outcome,
         "metrics": {
             "wall_time_secs": round(wall, 1),
@@ -222,6 +301,7 @@ def main() -> None:
             "versions_after": {k: v["version"] for k, v in versions_after.items()},
             "error_rate_pre_run": pre_rate,
             "error_rate_post_run": post_rate,
+            "sandbox_exec_commands": execs,
         },
         "final_output": final_text,
         "turns": turns,
@@ -244,9 +324,11 @@ def main() -> None:
         recheck = None
         if entries:
             import subprocess
-            p = subprocess.run([sys.executable, str(ROOT / "scripts/ledger-check.py"), str(lp)], capture_output=True, text=True)
+            # Re-check against the engine that issued the entries (the ablation engine digests differently: P10 F6e).
+            engine_url = ENGINE_URLS.get(engine_server_of(all_events)[1] or "", ENGINE_URLS["spyglass-engine"])
+            p = subprocess.run([sys.executable, str(ROOT / "scripts/ledger-check.py"), str(lp), "--engine", engine_url], capture_output=True, text=True)
             recheck = {"exit": p.returncode, "verdict": p.stdout.strip().splitlines()[-1] if p.stdout else p.stderr[-300:]}
-        result["ledger"] = {"investigation": engine_sid, "path": str(lp.relative_to(ROOT)), "entries": len(entries),
+        result["ledger"] = {"investigation": engine_sid, "engine": engine_url if entries else None, "path": str(lp.relative_to(ROOT)), "entries": len(entries),
                             "eids_issued": len(issued), "eids_cited_in_rca": cited,
                             "eids_cited_valid": [c for c in cited if c in issued],
                             "engine_latency_ms": [en["latency_ms"] for en in entries],

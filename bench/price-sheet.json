@@ -1,0 +1,4 @@
+{
+  "_note": "Provider list prices per 1M tokens, USD, at run time. The TrueForge model catalog does not expose pricing and the runner does not invent it: an entry with null prices makes the report's cost column read 'n/a' and the token columns stand as the cost proxy. Fill in the prices from the provider's published sheet to get dollar figures; the report then multiplies input/cache-read/output tokens by them.",
+  "google-gemini/gemini-3-6-flash": {"input_per_1m": null, "cache_read_per_1m": null, "output_per_1m": null, "source": null, "retrieved": null}
+}

@@ -17,7 +17,8 @@ DATA_DIR="data/deploy"
 STEADY="${S1_STEADY_SECS:-120}"
 LEAD="${S1_BENIGN_LEAD_SECS:-360}"
 POST="${S1_POST_SECS:-90}"
-if [ "${S1_FAST:-0}" = "1" ]; then STEADY=40; LEAD=50; POST=70; fi
+FAST="${SCENARIO_FAST:-${S1_FAST:-0}}"
+if [ "$FAST" = "1" ]; then STEADY=40; LEAD=50; POST=70; fi
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="data/scenarios/s1/$RUN_ID"
@@ -27,6 +28,7 @@ say() { printf '[s1 %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
 curl -sf "http://127.0.0.1:${GATEWAY_PORT:-8080}/health" >/dev/null || { echo "gateway not healthy; run 'just up' first" >&2; exit 1; }
 "$DEPLOYER" --data-dir "$DATA_DIR" init --reset >/dev/null
+rm -f data/knobs/*.json 2>/dev/null || true
 say "clean state: all services v1. steady state for ${STEADY}s"
 T_START="$(ts)"
 sleep "$STEADY"
@@ -54,7 +56,8 @@ python3 - "$RUN_DIR" "$T_START" "$T_BENIGN" "$T_FAULT" "$T_END" "$STEADY" "$LEAD
 import json, os, sys
 d, t_start, t_benign, t_fault, t_end, steady, lead, post, benign, fault = sys.argv[1:]
 m = {"scenario": "s1-payment-regression", "run_id": os.path.basename(d),
-     "fast": os.environ.get("S1_FAST", "0") == "1",
+     "fast": os.environ.get("SCENARIO_FAST", os.environ.get("S1_FAST", "0")) == "1",
+     "fault": {"kind": "deploy", "service": "payments", "version": "v2"},
      "seed": int(os.environ.get("LOADGEN_SEED", "42")), "rate": float(os.environ.get("LOADGEN_RATE", "10")),
      "t_start": t_start, "t_benign_deploy": t_benign, "t_fault": t_fault, "t_end": t_end,
      "steady_secs": int(steady), "lead_secs": int(lead), "post_secs": int(post),

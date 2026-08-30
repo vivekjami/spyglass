@@ -7,6 +7,7 @@ the pattern has to survive contact with real data one day.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -14,7 +15,7 @@ import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-from common import install, log, noise_roll, req_id_var, run
+from common import install, knob, log, noise_roll, req_id_var, run
 
 ORDERS_URL = os.environ.get("ORDERS_URL", "http://orders:8081")
 CAPTURED_HEADERS = {"content-type", "user-agent", "x-client-class", "x-request-id"}
@@ -43,6 +44,9 @@ async def checkout(request: Request):
         "body": raw[:BODY_CAP].decode("utf-8", "replace")})
     if noise_roll(rid, "gw-slow") < 0.02:  # steady WARN chatter
         log.warning("upstream latency above soft threshold", extra={"upstream": "orders"})
+    blip = knob("gateway")  # S2's decoy: a latency blip that is nobody's fault and correlates with nothing
+    if blip.get("blip_ms") and noise_roll(rid, "gw-blip") < float(blip.get("blip_share", 1.0)):
+        await asyncio.sleep(float(blip["blip_ms"]) / 1000)
     try:
         r = await request.app.state.client.post(
             f"{ORDERS_URL}/orders", content=raw,

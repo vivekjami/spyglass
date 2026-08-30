@@ -1,13 +1,13 @@
 {
   "name": "spyglass-no-novelty",
-  "description": "ABLATION A1: Spyglass with novel_templates disabled -- isolates the contribution of the headline tool. Identical otherwise.",
+  "description": "ABLATION A1: Spyglass without novelty -- the same engine binary and config run with --ablation no-novelty (novel_templates disabled, w_n = 0, no template candidates in the bundle), the same SOP, the same deployer and gate. Isolates the contribution of the headline tool.",
   "instructions_file": "agent/sop.md",
   "model": {
     "name": "$MODEL_A"
   },
   "mcp_servers": [
     {
-      "name": "spyglass-engine",
+      "name": "spyglass-engine-ablation",
       "enable_tools": [
         "@all"
       ],

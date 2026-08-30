@@ -144,16 +144,23 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         (win, base, m)
     };
     let warg = |x: Window| WindowArg { from: Some(fmt_ts(x.from)), to: Some(fmt_ts(x.to)) };
-    let resolved = json!({"window": win, "baseline": base, "focus_service": a.focus_service, "limit": limit, "weights": w});
+    let resolved = json!({"window": win, "baseline": base, "focus_service": a.focus_service, "limit": limit, "weights": w, "ablation": cfg.ablation});
 
     // Candidates, through the tools' own functions (each takes the lock briefly).
-    let (nov, _) = crate::tools::novel_templates(engine, &NoveltyArgs {
-        window: warg(win), baseline: warg(base), min_score: None, limit: Some(cfg.bounds.max_items), services: vec![], level: None,
-    })?;
+    // Ablation A1: with novelty disabled the bundle has no template candidates
+    // at all -- changepoints and deploys only; templates are reachable through
+    // search_logs. That is "Spyglass without the headline tool".
+    let templates: Vec<Value> = if cfg.novelty.enabled {
+        let (nov, _) = crate::tools::novel_templates(engine, &NoveltyArgs {
+            window: warg(win), baseline: warg(base), min_score: None, limit: Some(cfg.bounds.max_items), services: vec![], level: None,
+        })?;
+        nov.payload["items"].as_array().cloned().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let (cps, _) = crate::tools::detect_changepoints(engine, &ChangepointArgs {
         metrics: vec![], service: None, route: None, window: warg(win), baseline: WindowArg::default(), limit: Some(cfg.bounds.max_items),
     })?;
-    let templates: Vec<Value> = nov.payload["items"].as_array().cloned().unwrap_or_default();
     let changepoints: Vec<Value> = cps.payload["items"].as_array().cloned().unwrap_or_default();
 
     // Topology over logical services, for relevance and cascade connectivity.

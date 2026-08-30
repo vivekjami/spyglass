@@ -73,7 +73,9 @@ loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
   seed 42    :8080       :8081  ╲▶ payments-v2  (S1 regression)   ← both ALWAYS on
   10 req/s     │           │ ╲
                │           │  ╲▶ postgres (orders table)
-               │           ╰──▶ /deploy/current.json  ← written by the deployer
+               │           │  ╲▶ fraudcheck (external vendor: UNOBSERVED — no logs, no metrics, no host port)
+               │           ╰──▶ /deploy/current.json  ← written by the deployer (routing; and orders' config release)
+               │                /knobs/<name>.json    ← written by scenarios (environment changes with no change event)
                ╰── request capture (sanitized headers, capped body)
 ```
 
@@ -81,14 +83,16 @@ loadgen ──▶ gateway ──▶ orders ──▶ payments-v1  (known good)
 |---|---|---|
 | `common` | JSON log formatter, Prometheus metrics, `x-request-id` propagation, deploy-state lookup, deterministic noise | `target-system/common/` |
 | `gateway` | public edge; captures each request for later replay (auth headers never captured); every service's request line carries `replay: <experiment>` when the request was the engine's own replay | `target-system/gateway/` |
-| `orders` | persists to postgres, then charges via whichever payments version `current.json` names — read per request, so a deploy or rollback is a file write, not a restart | `target-system/orders/` |
-| `payments` | one codebase, two always-on instances; `v2` carries S1's seeded `UnsupportedCurrency` regression plus two benign novel INFO templates as decoys | `target-system/payments/` |
+| `orders` | persists to postgres, calls the fraud vendor synchronously (fails open on timeout, never logged — the observability gap S2 and S6 stand on), then charges via whichever payments version `current.json` names — read per request, so a deploy or rollback is a file write, not a restart. orders' own routed version selects its *config*: `v1.2` is S2's config-only release (vendor API v2, timeout doubled) | `target-system/orders/` |
+| `payments` | one codebase, two always-on instances; `v2` carries S1's seeded `UnsupportedCurrency` regression plus two benign novel INFO templates as decoys; both fail closed on a cache-write failure (S3), with a 2 % steady-state retried cache hiccup at the same level so that template is known before it bursts | `target-system/payments/` |
+| `fraudcheck` | the external vendor from inside (Phase 10): `/v1/score` ~3 ms, `/v2/score` 1.5 s / 9 s deep scoring, a knob-driven degradation (S6). In both topologies, in no telemetry | `target-system/fraudcheck/` |
 | `loadgen` | deterministic mixed traffic: 20% non-USD (the S1 failure class), 2% malformed, 1% injection-styled user-agents, seeded WARN chatter | `target-system/loadgen/` |
 | `deployer` | Rust CLI: `init`, `deploy`, `rollback`, `current`, `journal`. Atomic state writes; append-only journal that is its own WAL; rollback is idempotent on `request_id` and aborts on a TOCTOU version mismatch | `deployer/` |
 | `deployer serve` | the **mutating MCP server** (:8792): `propose_rollback` (mints the proposal), `rollback(proposal_id, …)` — approval-required in every agent manifest; refused on mismatch / expiry / TOCTOU, no-op on repeat — and read-only `current_versions`. Same tested lib the CLI uses; `deploy` deliberately absent | `deployer/src/main.rs` |
 | `rawtools-mcp` | the **baseline's MCP server** (:8793): `list_services`, `tail_logs`, `grep_logs`, `get_metric`, `deploy_events`, `http_request` (one request, like `curl` — the raw counterpart of the replay) — raw lines, generous caps, truncation reported, no shaping | `crates/rawtools-mcp/` |
 | `watch` | error-rate dashboard + threshold alert (ADR-013's terminal dashboard); on alert, opens a TrueForge session with the alert as its first turn — `SPYGLASS_AGENT` selects which agent answers | `scripts/watch.py` |
-| scenarios | pre-registered ground truth (`SCHEMA.md`), injector, noise profile, reproducibility check | `scenarios/` |
+| scenarios | pre-registered ground truth (`SCHEMA.md`, with scorer `match` maps and the scenario's `alert`), injector, noise profile, reproducibility check — S1 payment regression, S2 timeout cascade (config release), S3 redis pressure (no change event, no rollback target), S6 insufficient evidence (unobserved dependency; calibrated refusal) | `scenarios/` |
+| bench | conditions (fairness checklist), `run.py` (the matrix), `report.py` (the scorer), `results/` (every run, failures included) | `bench/` |
 
 **Evidence contract** (what the engine ingests, README C1):
 

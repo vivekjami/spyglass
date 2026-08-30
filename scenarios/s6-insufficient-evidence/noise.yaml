@@ -1,0 +1,20 @@
+# S6 noise profile. Same seeded traffic and background chatter as S1,
+# including the benign orders v1.1 deploy six minutes before the symptom.
+seed: 42
+rate_rps: 10
+payload_mix:
+  currency: {USD: 80, EUR: 12, GBP: 5, JPY: 3}
+  card_class: {standard: 70, premium: 20, corporate: 10}
+  amount: lognormal(mu=3.5, sigma=0.6)
+background:
+  malformed_request_rate: 0.02
+  injection_user_agent_rate: 0.01
+  warn_chatter:
+    orders_pg_slow_rate: 0.03
+    gateway_slow_rate: 0.02
+    payments_cache_hiccup_rate: 0.02     # ERROR "cache write failed: TimeoutError" (retried, ok)
+decoy_change:
+  benign_deploy: {service: orders, version: v1.1, lead_secs_before_fault: 360}
+fault:
+  fraudcheck_degradation: {share: 0.12, latency_ms: 9000, via: data/knobs/fraudcheck.json, change_event: none, observed: false}
+  orders_fraud_client: {endpoint: /v1/score, timeout_ms: 5000, on_timeout: fail open silently}

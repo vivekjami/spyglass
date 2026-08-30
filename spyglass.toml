@@ -39,8 +39,8 @@ has_log = true
 [[services]]
 name = "orders"
 service = "orders"
-role = "persists orders; charges via payments (routed per deploy state)"
-upstreams = ["payments", "postgres"]
+role = "persists orders; scores each order with the fraudcheck vendor (synchronous); charges via payments (routed per deploy state)"
+upstreams = ["payments", "postgres", "fraudcheck"]
 port_env = "ORDERS_PORT"
 default_port = 8081
 has_log = true
@@ -81,6 +81,13 @@ role = "orders database"
 name = "redis"
 service = "redis"
 role = "payments cache"
+
+# An external dependency the topology knows about and the telemetry does not:
+# no log file, no metrics endpoint, no host port. Every real system has one.
+[[services]]
+name = "fraudcheck"
+service = "fraudcheck"
+role = "external fraud-scoring vendor (third party), called synchronously by orders before each charge; NOT observed: no logs, no metrics"
 
 # Phase 4 -- template mining and novelty (README C3, ADR-006).
 [drain]

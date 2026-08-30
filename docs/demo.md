@@ -147,7 +147,26 @@ a one-second-TTL proposal → `aborted: proposal expired`; the fault
 re-introduced after a fix → `not_recovered`, `worsening`, `ESCALATED` — and
 the 61st call in a minute refused. Every line is a journal or ledger entry.
 
-### 2:45–3:00 — Phase 10 (`bench/report.py` output only; no hand-typed numbers)
+### 2:45–3:00 — The numbers — Phase 10 ✅ (`bench/report.py` output only; no hand-typed numbers)
+
+One card. The README's generated results table (`README.md` →
+*Results*, between the `bench-results` markers), cropped to the S1–S3 rows
+of **baseline** and **spyglass**: Success, RCA acc., tool calls, total
+tokens, latency. Read the numbers off the table; the table is regenerated
+by `just report` from `bench/results/` and every value traces to a run
+file. If a cell favours the baseline, it stays in the shot.
+
+Second beat on the same card, if there is time: the **S6** rows — the
+refusal scenario — with the Success column, and the **ablation** column on
+S1 vs S2 (what novelty buys where the smoking gun exists, and what the
+changepoints carry where it does not). Voiceover: *same model, same harness,
+same information, same gate; only the evidence interface changed; n = 3,
+every run committed, including the ones that went wrong.*
+
+End card: repo URL, `just demo`, and the one-line thesis.
+
+B-roll: `just bench --dry-run` (the 36-cell plan) and a `bench/results/`
+listing — the honesty is visible as a directory.
 
 ## Production rules
 

@@ -16,13 +16,14 @@ IST** (Sun 20:00 London), internal deadline **Sun Aug 30, 22:00 IST**.
 | P7 bundles | Sat 12–14 | Sat 13:50–15:00 | `build_evidence_bundle`: **8,747 events → 6 items / 5.6 kB** (1458:1), three key facts + relationships by ref, ≤ 8 kB enforced on the payload, compact items with full records behind the eids; SOP v4 opens with it: two-call triage, **11 tool calls, 177.7k / 184.3k input tokens (7–10 % below the baseline), 11/11 eids, re-check PASS** after the safe-watermark fix a one-event late arrival forced | [phase7-findings.md](phase7-findings.md) · PR #7 |
 | P8 causal replay | Sat 14–18 | Sat 15:05–15:55 | Executor = the engine (ADR-010 amended): `get_exemplar_request` (sanitized twice, chain + 5xx origin, deterministic) → `replay_exemplar` (N per version, tagged traffic dropped at ingest). **v1 0/20 vs v2 20/20 `separated`** in 1 s, three of three; a succeeding request 0/20 vs 0/20 `not_separated`; 100/100 replay lines excluded. Two agent runs with SOP v5: **CAUSAL** RCA with the one-class limit stated, rollback citing the replay eids, 13/14 and 15/15 eids cited, re-check PASS; 12 calls, 243k / 260k input tokens (of which 162k cache reads — the two extra model calls), uncached +2 % / +24 % vs P7. Baseline gets `http_request`; analyst briefs written, fan-out conditional, not triggered on S1 | [phase8-findings.md](phase8-findings.md) · PR #8 |
 | P9 approval + remediation hardened | Sat 18–22 | Sat 15:55–17:05 | **The system mints the key**: `propose_rollback` → gated `rollback(proposal_id, restated)`; expiry (the harness gate has none), TOCTOU at execution, restatement checked, every refusal journaled with its reason; eids rendered at the gate resolved to their ledger lines. **The engine judges recovery**: `verify_recovery` closes on two consecutive clean checks ≥ 15 s apart (`verified_recovery` entry) or escalates (`escalation`, terminal); engine budget backstop. Live: double-fire = 1 rollback + 1 noop; manual change → aborted; expired → aborted; restated mismatch → aborted; closure and escalation both observed; 61st call refused. Agent runs: CAUSAL RCA, engine-closed, 12–13/12–13 eids cited; the deny path ends report-only with no retry | [phase9-findings.md](phase9-findings.md) · PR #9 |
-| P10 benchmark | Sun 09–13 | — | | |
+| P10 benchmark | Sun 09–13 | Sat 18:00–Sun 00:45 | S2 (config-only release → latency cascade), S3 (no change event; a known-but-rare template bursting; report-only), S6 (unobserved dependency; latency alert; calibrated refusal) — each reproduces at **0.0 pt** drift; the runner (one fresh incident per cell, unattended, invalid runs kept), the mechanical scorer (verdict block + evidence-id join against pre-registered `match` maps), ablation A1 as a second engine instance (`--ablation no-novelty`). Two scenario-authoring findings: the fast timeline must preserve the engine's relations (S6's lead → 130 s), and "known-but-rare" needs history inside the run (S3's steady state → 300 s). **Matrix: 36/36 valid, 0 failures, 4 h 23 min unattended.** S1–S3: 9/9 correct for every condition — the baseline finds every cause the telemetry contains; Spyglass wins the bill only on S3 (8.7 vs 14 calls, −34 % tokens) and pays for its causal check + engine-judged verification on S1/S2. **S6 (the refusal scenario): A1 3/3, Spyglass 1/3, baseline 0/3** — the novelty output gave the model material to blame the benign deploy; more evidence made the agent act (F6.5). The sandbox never executed a command in any run (harness bootstrap failure, symmetric; F6.7). Numbers in `docs/benchmark.md` | [phase10-findings.md](phase10-findings.md) · PR #10 |
 | P11 demo + submission | Sun 13–22 | — | | |
 
-**Schedule position after P9:** Sat 17:05 IST vs the spec's Sat 22:00 —
-about five hours ahead. ~29 h to the internal deadline. Next: the
-benchmark (P10: scenarios S2 and S3, the runner, `report.py`, ablation A1;
-S6 above S4/S5), then demo and submission (P11).
+**Schedule position after P10:** the matrix ran Sat 19:38 – Sun 00:13 IST
+(4 h 23 min, unattended); the spec had P10 on Sunday 09–13, so the build is
+~9 h ahead of the calendar with the whole of Sunday for P11: demo hardening,
+the review-findings pass, `just demo` from a clean clone, filming, and the
+submission (internal deadline Sun 22:00 IST).
 
 ## Open decisions
 
@@ -30,7 +31,7 @@ S6 above S4/S5), then demo and submission (P11).
 |---|---|---|---|
 | ~~Idempotency key source (P2 F7)~~ | ~~P9~~ | decided at P9: **(a) built** — `propose_rollback` mints it; `rollback` consumes it | [ADR-011](adr/ADR-011-human-approval-for-destructive-actions.md) |
 | ~~Causal-replay executor (P0 F9)~~ | ~~P8~~ | decided at P8: **(A) built** — `replay_exemplar` on the engine; (C) survives as the SOP's "replay not possible" path | [ADR-010](adr/ADR-010-sandbox-verification-before-action.md) |
-| Token metric vs RCA label (P8 F6) | P10 | report input tokens alone · report tokens next to the RCA's label (causal / correlational) and the replay outcome | **the latter** — a causal RCA costs two more model calls than a correlational one; comparing tokens without the label would reward the weaker answer |
+| ~~Token metric vs RCA label (P8 F6)~~ | ~~P10~~ | decided at P10: the per-run table carries the verdict's `evidence_label` (causal / correlational / insufficient) next to the token columns, and input tokens are reported with their cache-read share | `bench/report.py` |
 
 ## Drop order if behind (from the spec, unchanged)
 
