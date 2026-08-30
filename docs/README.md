@@ -18,7 +18,8 @@ the running record of decisions and findings.
 | [`adr/`](adr/) | Individual decision records — context, alternatives, why rejected, reversal conditions. |
 | [`safety.md`](safety.md) | The safety model as built and tested: read/write separation, the proposal → gate → verification path, injection defence, the budget backstop. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |
-| [`demo.md`](demo.md) | Shot list and per-segment commands. |
+| [`demo.md`](demo.md) | Shot list: the segments, what each is for, and the per-phase commands behind them. |
+| [`demo-day.md`](demo-day.md) | **The operator's runbook** — setup from a cold machine, screen-recording setup, the four captures, the second-by-second cut, the narration script, ffmpeg recipes, and what to do when a take goes wrong. |
 | [`blog/draft.md`](blog/draft.md) | The hackathon blog post, grown from build notes as they happen. |
 | [`../scenarios/SCHEMA.md`](../scenarios/SCHEMA.md) | Ground-truth format; each scenario's README carries its measured acceptance evidence. |
 

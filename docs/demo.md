@@ -177,6 +177,11 @@ listing — the honesty is visible as a directory.
 
 ## Filming-day runbook (Phase 11)
 
+> **Filming today?** [`demo-day.md`](demo-day.md) is the full operator's
+> runbook — cold-machine setup, recorder setup, the four captures with what to
+> hold on, the second-by-second cut, the word-for-word narration, ffmpeg
+> recipes, and the failure table. This section is its short form.
+
 Everything below was exercised in Phase 11 (`docs/phase11-findings.md`).
 Total screen time ≤ 3:00; the cut is assembled from **four captures**, each
 of which can be retaken independently. Voiceover is recorded separately
