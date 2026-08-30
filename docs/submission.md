@@ -110,5 +110,14 @@ Only these need a human; everything else is in the repository.
    **22:00 IST** (the hard deadline is 00:30 IST Monday / 20:00 London
    Sunday).
 
-`main` already carries the whole build: phases 0–11 landed through pull
-requests (#1–#11 plus the integration PR), never a direct push.
+**Merging.** Two pull requests are open and both are conflict-free:
+[#11](https://github.com/vivekjami/spyglass/pull/11) (Phase 11 → its stacked
+base, completing the chain) and
+[#12](https://github.com/vivekjami/spyglass/pull/12) (**the integration PR**:
+everything → `main`, 34 commits). Merging #12 is what puts phases 2–11 on
+`main`; #11 keeps the stacked record tidy. Nothing in this repository has
+ever been pushed to `main` directly, and this is the one remaining step that
+needs the repository owner.
+
+Ideally: authorize Qodo (step 2) *before* merging, so it reviews #11 and #12
+and the *Qodo status* line can point at a real review.
