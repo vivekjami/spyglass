@@ -19,7 +19,9 @@ the running record of decisions and findings.
 | [`safety.md`](safety.md) | The safety model as built and tested: read/write separation, the proposal → gate → verification path, injection defence, the budget backstop. |
 | [`benchmark.md`](benchmark.md) | Benchmark methodology and results (generated, never hand-edited). |
 | [`demo.md`](demo.md) | Shot list: the segments, what each is for, and the per-phase commands behind them. |
-| [`demo-day.md`](demo-day.md) | **The operator's runbook** — setup from a cold machine, screen-recording setup, the four captures, the second-by-second cut, the narration script, ffmpeg recipes, and what to do when a take goes wrong. |
+| [`presentation.md`](presentation.md) | **What to say and show** — the story spine, the deck (in-video cards + the full deck with speaker notes), the second-by-second cut, the narration script, the with/without comparison stated honestly, future work, and the judge Q&A. |
+| [`demo-day.md`](demo-day.md) | **How to record it** — setup from a cold machine, screen-recording setup, the four captures, ffmpeg recipes, and what to do when a take goes wrong. |
+| [`deck/index.html`](deck/index.html) | The slide deck: 13 slides, three of which are the cards used inside the video. `f` full screen · `c` clean mode for recording · `p` print to PDF. |
 | [`blog/draft.md`](blog/draft.md) | The hackathon blog post, grown from build notes as they happen. |
 | [`../scenarios/SCHEMA.md`](../scenarios/SCHEMA.md) | Ground-truth format; each scenario's README carries its measured acceptance evidence. |
 
