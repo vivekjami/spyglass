@@ -27,7 +27,8 @@ def main() -> int:
     ap.add_argument("--max-secs", type=float, default=900)
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--area", help="x,y,w,h -- record a region instead of the whole screen")
-    ap.add_argument("--cursor", action="store_true", default=True)
+    ap.add_argument("--no-cursor", dest="cursor", action="store_false", default=True,
+                    help="omit the pointer -- wanted for slide cards, harmless for terminals")
     a = ap.parse_args()
 
     out = os.path.abspath(os.path.expanduser(a.out))
