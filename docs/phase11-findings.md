@@ -229,9 +229,17 @@ four; 55 S1 tool calls, not 54; A1 ledger mismatches 1–6, not 3–6; 12/12
 Spyglass ledger re-checks PASS, not 9/9), stale placeholders the benchmark
 had since answered, `SOP v7` labels, an ablation described as a config entry
 it outgrew, and three places that still implied the harness sandbox did work
-it never did. Two findings were themselves refuted on inspection — a claimed
-clippy failure (`cargo clippy -D warnings` exits 0) and a "measured number"
-that turned out to be measuring a different interval — and were not applied.
+it never did. One finding was refuted on inspection (a "measured number" that
+turned out to be measuring a different interval) and was not applied. One I
+refuted and was wrong about: an auditor reported a clippy failure at
+`crates/spyglass-core/src/lib.rs:635`; `cargo clippy -D warnings` exits 0 on
+this machine, so I dismissed it — and CI then failed on exactly that line.
+The build host runs clippy **1.94**; the CI toolchain is `stable`, **1.98**,
+whose `collapsible_match` covers an `if` inside a match arm. *Clean on my
+machine* is a claim about a toolchain, not about the code. Fixed by turning
+the arm into a guard (`Value::String(s) if PAN_RE.is_match(s) =>`), which is
+identical in behaviour and quiet on both versions — and a reminder that the
+CI a reviewer sees, not the laptop, is the arbiter.
 
 ### F6. Loose ends, stated
 

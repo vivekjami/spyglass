@@ -631,11 +631,9 @@ fn redact_value(v: &mut Value, path: &str, out: &mut Vec<String>) {
                 redact_value(val, &format!("{path}[{i}]"), out);
             }
         }
-        Value::String(s) => {
-            if PAN_RE.is_match(s) {
-                *s = PAN_RE.replace_all(s, "[redacted:pan]").into_owned();
-                out.push(format!("{path}:pan"));
-            }
+        Value::String(s) if PAN_RE.is_match(s) => {
+            *s = PAN_RE.replace_all(s, "[redacted:pan]").into_owned();
+            out.push(format!("{path}:pan"));
         }
         _ => {}
     }
