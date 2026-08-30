@@ -21,6 +21,7 @@
 | `gate-check.py` | Phase 9 acceptance, live (`just s9-check`): double-fire, approve-after-manual-rollback, expired and restated proposals, engine-judged closure and escalation, the budget backstop; leaves payments at v1 | engine + deployer + stack up |
 | `scenario-curve.py` | 5xx and p95-latency curve of a scenario run; `--scenario sN --compare` two runs against the ground truth's tolerances (`just scenario-check sN`) | run snapshots in `data/scenarios/<sN>/` |
 | `s1-curve.py` | the Phase 1 name for `scenario-curve.py --scenario s1` (`just s1-check`) | 〃 |
+| `record.py` | terminal-driven screen recording for the demo captures: GNOME screencast over D-Bus, held open for the duration (`--secs`, `--until-file`, `--area`); video only, 1920×1080 | GNOME/Wayland session; python3-gi |
 | `validate-ground-truth.py` | check `ground-truth.yaml` files against `scenarios/SCHEMA.md` | PyYAML |
 
 Facts these encode that the TrueForge docs do not state (Phase 0): a turn's

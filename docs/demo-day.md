@@ -155,7 +155,29 @@ this document works.
 
 **Nothing is installed on this machine.** Two paths:
 
-### Path A — recommended: OBS + ffmpeg
+### Path A — recommended: scripted, from the terminal
+
+`scripts/record.py` drives GNOME's own screencast over D-Bus, so a clip can be
+started and stopped around an exact command instead of by hand:
+
+```bash
+scripts/record.py ~/spyglass-recordings/c3.webm --secs 90
+scripts/record.py ~/spyglass-recordings/c3.webm --until-file /tmp/done   # stop on a signal
+scripts/record.py ~/spyglass-recordings/card.webm --secs 10 --area 0,0,1920,1080
+```
+
+It records **video only** (1920×1080, ~22–30 fps VP8) — the voiceover is laid
+on at the end with ffmpeg. A one-shot `gdbus call` will *not* work: GNOME ties
+the screencast to the calling D-Bus connection, so it stops after a single
+frame. That is what this script exists to hold open.
+
+You still need `ffmpeg` for the 8× speed-up, the joins and the voiceover mux:
+
+```bash
+sudo apt install -y ffmpeg
+```
+
+### Path B — OBS + ffmpeg (if you want a visible record indicator)
 
 ```bash
 sudo apt install -y obs-studio ffmpeg
@@ -310,82 +332,40 @@ End card: repo URL · `just demo` · the one-line thesis.
 
 ---
 
-## 5. The cut — second by second
+## 5. The cut, and the script
 
-Total **2:58**. Segment C is a static card; everything else is screen capture.
+**Both live in [`presentation.md`](presentation.md)** — §4 is the
+second-by-second cut (2:55, with which capture feeds each segment and why the
+segment lengths are what they are) and §5 is the narration word for word, with
+delivery notes. That file is the single source of truth for content; this one
+stays the mechanics.
 
-| Time | Len | Source | On screen | Voiceover |
-|---|---|---|---|---|
-| 0:00–0:10 | 10 s | Capture 1 | green dashboard → deploy → the bar climbs, alert fires | *Friday, four p.m. …* |
-| 0:10–0:30 | 20 s | Capture 2 **@ 8×** | raw log walls, tool counter climbing, freeze on totals | *Give the same model raw tools …* |
-| 0:30–0:45 | 15 s | static card | telemetry → evidence engine → shaped evidence → agent | *So don't make the agent smarter …* |
-| 0:45–1:30 | 45 s | Capture 3b | bundle coverage; the ERROR template with its stack; `engine_latency_ms` | *One call: nine thousand events become six items …* |
-| 1:30–2:00 | 30 s | Capture 3b | `get_exemplar_request`, then `replay_exemplar` `comparison` | *Correlation is not cause …* |
-| 2:00–2:25 | 25 s | Capture 3 **live** | the proposal, the gate full-screen with eids, your `y`, the rollback | *The agent cannot act …* |
-| 2:25–2:45 | 20 s | Capture 3 live + 3b | `verify_recovery` closing; the postmortem citing eids; `ledger re-check PASS` | *Then the engine, not the model, verifies …* |
-| 2:45–2:58 | 13 s | Capture 4 | the generated Results table, S1–S3 then S6; end card | *Thirty-six runs, every one committed …* |
+Two things from it worth repeating here, because they change how you *shoot*:
 
-**The failure-first rule:** the baseline segment comes *before* the thesis is
-argued. Do not reorder it — the foil is what makes the idea land.
+- **Segment 6 (the gate, 1:42–2:07) must come from the live take**, not the
+  scroll-through — the keystroke has to be real.
+- **Segments 4, 5 and 7 come from the scroll-through** (Capture 3b), because
+  72 s of run has to fill ~75 s of evidence footage and you want to linger.
 
----
+## 6. The three slide cards
 
-## 6. The narration, word for word
+The video has three slides; everything else is screen capture. They are built
+in [`deck/index.html`](deck/index.html):
 
-**404 words** — about **2:30** of speech at a normal 150–165 wpm, against
-178 s of video. The ~25 s of slack is deliberate: it is your pauses, and the
-three seconds of silence at the gate. Record it **separately** from the screen
-capture, in two takes, and lay it over the cut.
+```bash
+xdg-open docs/deck/index.html      # or open it in Chrome/Firefox
+```
 
-> **[0:00]** Friday, four p.m. A payments deploy goes out. Within ten seconds
-> one checkout in five is failing. Someone gets paged.
->
-> **[0:10]** Give the same model raw tools — tail, grep, metrics — and it does
-> find it. Watch the cost: nineteen tool calls, four hundred thousand input
-> tokens, and a report you cannot check. Published evaluations say this is the
-> ceiling: frontier models under fifty percent on real incident tasks, and
-> longer trajectories don't help.
->
-> **[0:30]** So don't make the agent smarter. Make the evidence better.
-> Spyglass is a Rust evidence plane between the telemetry and the model. It
-> mines log templates, scores novelty, finds changepoints, ranks what matters,
-> and hands the agent a bounded bundle — every item carrying an evidence id, a
-> digest, and the engine's own latency.
->
-> **[0:45]** One call. Nine thousand events become six items, under five
-> kilobytes. The new error template, first seen on payments-v2 a tenth of a
-> second after the deploy. The error-rate changepoint, six-tenths of a second
-> after it. And the deploy itself. The engine says which precedes which.
-> Single-digit milliseconds — that's the Rust argument, on screen.
->
-> **[1:30]** Correlation is not cause. So the agent takes the request a real
-> client actually sent, sanitized, and replays it twenty times against each
-> version. Version one: zero failures out of twenty. Version two: twenty out
-> of twenty. Separated. Now the word is "caused" — for this one failure mode,
-> and the tool says only that.
->
-> **[2:00]** The agent cannot act. It proposes; the system mints the key,
-> snapshots the live version, stamps an expiry. The human reads the evidence
-> behind every id — E8: replay, version two, twenty of twenty failed — and
-> says yes, once. Rollback.
->
-> **[2:25]** Then the engine, not the model, verifies: two clean checks,
-> incident closed. Every claim in the postmortem cites an id; every id is a
-> ledger line with a digest. Re-run the query and the digest matches — an
-> investigation you can audit next week.
->
-> **[2:45]** Same model, same harness, same information, same gate; only the
-> evidence changed. Thirty-six runs, every one committed. Where the cause is
-> in the telemetry, raw tools find it too — a tie. Where there is nothing to
-> find, the honest result: the no-novelty ablation refused three times out of
-> three, Spyglass once, raw tools never. More evidence made the agent act.
-> That's the finding — and the benchmark is why we know it.
+- `f` — full screen
+- **`c` — clean mode. Press this before recording.** It hides the slide
+  counter, the navigation hint and the "video card" labels, which would
+  otherwise be burned into your footage.
+- `→` / `←` — navigate · `p` — print to PDF (for a deck handout)
 
-That last beat is the strongest thing in the submission. It is a *negative*
-result about the project's own thesis, produced by its own measurement. Do not
-cut it to save five seconds.
-
----
+Record each card full-screen for ~5 s longer than you need, and trim. The
+three cards are slides **3** (the turn), **10** (the results) and **13** (the
+end card); the other ten slides are the full deck for a live round or judge
+Q&A — see [`presentation.md`](presentation.md) §3.
 
 ## 7. Editing
 

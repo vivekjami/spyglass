@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spyglass — deck</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --ink:#e6edf3; --dim:#8b949e;
+    --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+  #deck{height:100vh;width:100vw;position:relative;overflow:hidden}
+  .slide{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    padding:5vh 6vw;justify-content:center;
+  }
+  .slide.on{display:flex}
+  h1{font-size:clamp(34px,5.2vw,76px);line-height:1.05;margin:0 0 .35em;font-weight:700;letter-spacing:-.02em}
+  h2{font-size:clamp(24px,3.1vw,46px);line-height:1.15;margin:0 0 .6em;font-weight:650;letter-spacing:-.01em}
+  .kicker{font-family:var(--mono);font-size:clamp(11px,1.15vw,16px);color:var(--accent);
+    text-transform:uppercase;letter-spacing:.16em;margin-bottom:1.6em}
+  .lead{font-size:clamp(17px,1.95vw,30px);line-height:1.5;color:var(--ink);max-width:52ch}
+  .dim{color:var(--dim)}
+  ul{margin:.2em 0;padding-left:1.1em}
+  li{font-size:clamp(15px,1.6vw,25px);line-height:1.62;margin:.42em 0;max-width:56ch}
+  .mono{font-family:var(--mono)}
+  .big{font-size:clamp(40px,6.4vw,104px);font-weight:750;line-height:1;letter-spacing:-.03em}
+  .row{display:flex;gap:3vw;align-items:center}
+  .col{flex:1;min-width:0}
+  table{border-collapse:collapse;width:100%;font-size:clamp(13px,1.42vw,23px)}
+  th,td{padding:.5em .7em;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:600;font-size:.82em;text-transform:uppercase;letter-spacing:.08em}
+  td.num{font-family:var(--mono);text-align:right}
+  tr.hi td{background:rgba(248,81,73,.11)}
+  .good{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)} .acc{color:var(--accent)}
+  .pipe{display:flex;align-items:stretch;gap:.7vw;margin:2.2vh 0;flex-wrap:wrap}
+  .box{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:1.5vh 1.1vw;font-size:clamp(12px,1.28vw,20px);line-height:1.35}
+  .box b{display:block;font-size:1.06em;margin-bottom:.28em}
+  .box.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .arrow{display:flex;align-items:center;color:var(--dim);font-size:clamp(15px,1.7vw,28px)}
+  .note{margin-top:2.2vh;font-size:clamp(12px,1.25vw,20px);color:var(--dim);max-width:74ch;line-height:1.55}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.72em;padding:.2em .6em;border-radius:5px;
+    border:1px solid var(--line);color:var(--dim);margin-left:.5em;vertical-align:middle}
+  .tag.card{border-color:var(--accent);color:var(--accent)}
+  footer{position:absolute;bottom:2.4vh;left:6vw;right:6vw;display:flex;justify-content:space-between;
+    font-family:var(--mono);font-size:clamp(10px,.95vw,14px);color:var(--dim)}
+  .quote{border-left:3px solid var(--accent);padding-left:1.1em;font-size:clamp(16px,1.85vw,29px);
+    line-height:1.5;max-width:50ch}
+  body.clean footer,body.clean .tag{display:none}
+  body.clean .kicker{margin-bottom:1.9em}
+  @media print{
+    html,body,#deck{height:auto}
+    .slide{display:flex!important;position:relative;height:100vh;page-break-after:always;padding:8vh 8vw}
+    footer{position:absolute}
+  }
+</style>
+</head>
+<body>
+<div id="deck">
+
+<!-- 1 ................................................................. -->
+<section class="slide">
+  <div class="kicker">The Agent Harness Hackathon · WeMakeDevs × TrueFoundry × Qodo</div>
+  <h1>Spyglass</h1>
+  <div class="lead">Evidence engineering for AI-powered incident investigation.<br>
+  <span class="dim">A Rust evidence plane between production telemetry and an LLM agent — and a controlled experiment to find out whether that helps.</span></div>
+  <div class="note mono">Vivek Jami · github.com/vivekjami/spyglass</div>
+</section>
+
+<!-- 2 ................................................................. -->
+<section class="slide">
+  <div class="kicker">The problem</div>
+  <h2>Agents are measurably bad at incident RCA —<br>and it is not a reasoning problem</h2>
+  <div class="row">
+    <div class="col">
+      <div class="big bad">&lt;50%</div>
+      <div class="lead dim">every frontier model on ITBench-AA Kubernetes root-cause tasks</div>
+    </div>
+    <div class="col">
+      <ul>
+        <li>The failure mode is <b>over-investigation</b></li>
+        <li><b>Longer trajectories did not improve accuracy</b></li>
+        <li>So more steps and more tokens are not the fix</li>
+      </ul>
+    </div>
+  </div>
+  <div class="note">If patience and budget solved this, it would already be solved. The bottleneck is upstream of the reasoning: it is what reaches the model.</div>
+</section>
+
+<!-- 3 ....................................................... VIDEO CARD -->
+<section class="slide">
+  <div class="kicker">The bet <span class="tag card">video card A1 · 0:30–0:42</span></div>
+  <h1>Don't make the agent smarter.<br>Make the evidence better.</h1>
+  <div class="pipe">
+    <div class="box"><b>Telemetry</b><span class="dim">logs · metrics · deploy events</span></div>
+    <div class="arrow">→</div>
+    <div class="box on"><b>Evidence engine</b><span class="dim">templates · novelty · changepoints · ranking</span></div>
+    <div class="arrow">→</div>
+    <div class="box on"><b>Shaped evidence</b><span class="dim">bounded · ranked · id-stamped · digested</span></div>
+    <div class="arrow">→</div>
+    <div class="box"><b>Agent</b><span class="dim">the same model, unchanged</span></div>
+  </div>
+  <div class="note">Hold the model constant. Vary only the evidence interface. Measure. If the prediction fails — say so.</div>
+</section>
+
+<!-- 4 ................................................................. -->
+<section class="slide">
+  <div class="kicker">Architecture</div>
+  <h2>What I built, and what TrueForge already does</h2>
+  <div class="row">
+    <div class="col">
+      <ul>
+        <li><b class="acc">Built:</b> a Rust engine — ingest, Drain template mining keyed by log level, novelty scoring, guarded changepoints with deploy correlation, a linear ranker, bounded bundles</li>
+        <li><b class="acc">Built:</b> the causal check and the write plane (propose / gated rollback)</li>
+        <li><b class="dim">Used as-is:</b> TrueForge runs the agent loop, sub-agents, the approval gate and the sandbox</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="box"><b>4 MCP servers · 21 tools</b>
+        <span class="dim">engine :8791 · deployer :8792 · raw-tools :8793 · ablation engine :8794</span></div>
+      <div class="box" style="margin-top:1.6vh"><b>Target system</b>
+        <span class="dim">gateway → orders → payments (v1 &amp; v2 always on) · postgres · redis · an unobserved vendor</span></div>
+    </div>
+  </div>
+  <div class="note">A deploy is a file write, so a rollback is instant and the incident is reproducible to the request.</div>
+</section>
+
+<!-- 5 ................................................................. -->
+<section class="slide">
+  <div class="kicker">What the agent actually sees</div>
+  <h2>One call replaces paging the logs</h2>
+  <div class="row">
+    <div class="col"><div class="big acc">9,723&nbsp;→&nbsp;6</div>
+      <div class="lead dim">events → evidence items, in 4.7&nbsp;kB</div></div>
+    <div class="col"><ul>
+      <li><b>What is new</b> — the novel ERROR template, with its stack</li>
+      <li><b>When it changed</b> — the changepoint, <span class="mono">+0.6 s after D-2</span></li>
+      <li><b>What was deployed</b> — and which deploy precedes which change</li>
+      <li>Every item: an <b>evidence id</b>, a <b>digest</b>, and <span class="mono">engine_latency_ms</span></li>
+    </ul></div>
+  </div>
+  <div class="note">Bounded by construction — the response cannot exceed 8 kB, and it says what it did not show you.</div>
+</section>
+
+<!-- 6 ................................................................. -->
+<section class="slide">
+  <div class="kicker">Correlation → cause</div>
+  <h2>The agent designs an experiment; the engine runs it</h2>
+  <div class="row">
+    <div class="col"><ul>
+      <li>Capture the request a real client sent — sanitized twice</li>
+      <li>Replay it <b>20×</b> against each always-on version</li>
+      <li>Compare the failure proportions</li>
+    </ul></div>
+    <div class="col">
+      <table>
+        <tr><th>version</th><th style="text-align:right">failed</th></tr>
+        <tr><td class="mono">payments v1</td><td class="num good">0 / 20</td></tr>
+        <tr><td class="mono">payments v2</td><td class="num bad">20 / 20</td></tr>
+        <tr><td class="mono">verdict</td><td class="num acc">separated</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="note">Causal for <i>this</i> failure mode — never "the only one". A request that had succeeded, replayed the same way, comes back <span class="mono">0/20 vs 0/20 → not_separated</span>. The tool says no as readily as yes.</div>
+</section>
+
+<!-- 7 ................................................................. -->
+<section class="slide">
+  <div class="kicker">Control &amp; safety</div>
+  <h2>One mutating action, and the model never holds the pen</h2>
+  <div class="pipe">
+    <div class="box"><b>propose</b><span class="dim">agent asks; the <i>system</i> mints the id, snapshots the version, stamps an expiry</span></div>
+    <div class="arrow">→</div>
+    <div class="box on"><b>human gate</b><span class="dim">every cited evidence id resolved to its ledger line</span></div>
+    <div class="arrow">→</div>
+    <div class="box"><b>execute</b><span class="dim">idempotent · TOCTOU-checked · expiring · every refusal journaled</span></div>
+    <div class="arrow">→</div>
+    <div class="box on"><b>engine verifies</b><span class="dim">two clean checks close it — the agent never declares recovery</span></div>
+  </div>
+  <div class="note"><span class="mono">just s9-check</span> exercises all of it live in 116 s: double-fire → 1 rollback + 1 no-op · manual change → aborted · expired → aborted · restated mismatch → aborted · the 61st call in a minute refused.</div>
+</section>
+
+<!-- 8 ................................................................. -->
+<section class="slide">
+  <div class="kicker">The experiment</div>
+  <h2>Same model. Same harness. Only the evidence varies.</h2>
+  <div class="row">
+    <div class="col"><ul>
+      <li><b>3 conditions</b> — raw tools · Spyglass · Spyglass minus novelty</li>
+      <li><b>4 scenarios</b> × <b>3 repeats</b> = <b>36 runs, 36 valid</b></li>
+      <li>Ground truth <b>pre-registered</b> before the first run</li>
+      <li>Scoring is <b>mechanical</b> — a fenced verdict block plus an evidence-id join. No LLM judge</li>
+      <li><b>Every run committed</b>, failures included</li>
+    </ul></div>
+    <div class="col"><div class="box"><b>The four scenarios</b>
+      <span class="dim">S1 a deploy regression with a stack trace · S2 a config-only release → latency cascade · S3 redis full, <i>no change event</i> · S6 an unobserved vendor, <i>no cause in the telemetry</i></span></div></div>
+  </div>
+  <div class="note">Harness context-management pinned off in every condition, so the harness does no shaping of its own on the control group (ADR-016).</div>
+</section>
+
+<!-- 9 ................................................................. -->
+<section class="slide">
+  <div class="kicker">Result 1 — where the cause is in the telemetry</div>
+  <h2>A tie on correctness. The difference is cost and audit.</h2>
+  <table>
+    <tr><th>S1–S3</th><th style="text-align:right">Baseline</th><th style="text-align:right">Spyglass</th><th style="text-align:right">No&nbsp;novelty</th></tr>
+    <tr><td>Correct outcome</td><td class="num good">9/9</td><td class="num good">9/9</td><td class="num good">9/9</td></tr>
+    <tr><td>S3 — tool calls</td><td class="num">14</td><td class="num acc">8.7</td><td class="num">10</td></tr>
+    <tr><td>S3 — input tokens</td><td class="num">210k</td><td class="num acc">139k</td><td class="num">157k</td></tr>
+    <tr><td>S1 / S2 — input tokens</td><td class="num">424k / 891k</td><td class="num">461k / 937k</td><td class="num">525k / 1,253k</td></tr>
+    <tr><td>Citable evidence ids</td><td class="num bad">none</td><td class="num good">7–22</td><td class="num good">7–22</td></tr>
+    <tr><td>Ledger re-checks</td><td class="num dim">n/a</td><td class="num good">12/12 PASS</td><td class="num dim">—</td></tr>
+  </table>
+  <div class="note">Where the cause is written in the logs, raw tools find it too. Spyglass is cheaper on S3 and slightly dearer on S1–S2 — it pays for a causal replay and an engine-judged verification loop the baseline never runs. What it buys everywhere is claims you can re-check.</div>
+</section>
+
+<!-- 10 ...................................................... VIDEO CARD -->
+<section class="slide">
+  <div class="kicker">Result 2 — where the cause is <i>not</i> in the telemetry <span class="tag card">video card A2 · 2:22–2:52</span></div>
+  <h2>S6: my headline feature made it worse</h2>
+  <table>
+    <tr><th>S6 — refuse and say what would decide it</th><th style="text-align:right">Baseline</th><th style="text-align:right">Spyglass</th><th style="text-align:right">No&nbsp;novelty</th></tr>
+    <tr class="hi"><td>Correct refusal</td><td class="num bad">0/3</td><td class="num warn">1/3</td><td class="num good">3/3</td></tr>
+    <tr class="hi"><td>No wrong action</td><td class="num warn">2/3</td><td class="num bad">1/3</td><td class="num good">3/3</td></tr>
+  </table>
+  <div class="note">An unobserved vendor degrades. Latency only, no error, no change event — and a benign deploy 130 s earlier as bait. Take novelty away and the system refuses correctly every time. Leave it in and it hands the model a story: two of three runs rolled back the innocent deploy. <b class="bad">On the safety floor my full system was the worst of the three.</b><br><br><b>More evidence made the agent act.</b> That is a negative result about my own thesis — produced by my own benchmark, and committed with the runs that show it.</div>
+</section>
+
+<!-- 11 ................................................................ -->
+<section class="slide">
+  <div class="kicker">What it cost me — and the fix</div>
+  <h2>Two gaps, recorded rather than quietly patched</h2>
+  <ul>
+    <li><b>Verification judged the wrong metric.</b> It reads the 5xx share only — so after a wrong rollback on a <i>latency</i> incident it reported "recovered" while p95 was still above 5 s. Fix: judge the alert's own metric, or refuse.</li>
+    <li><b>No mechanical evidence floor on proposals.</b> Nothing stops a rollback whose cited evidence contains no deploy-correlated change. Fix: the deployer refuses it before a human ever sees it — which on S6 turns two wrong actions into refusals.</li>
+  </ul>
+  <div class="note">Both were found <i>after</i> the matrix ran. Patching and re-running would have produced a nicer table and a worse result. The matrix stays the matrix; the gaps are written down in the phase record with the runs that exposed them.</div>
+</section>
+
+<!-- 12 ................................................................ -->
+<section class="slide">
+  <div class="kicker">Limits &amp; what is next</div>
+  <h2>What this does not show</h2>
+  <div class="row">
+    <div class="col"><ul>
+      <li>n = 3 · one model · one incident domain</li>
+      <li>Scenarios authored by the same person who built the system</li>
+      <li>The harness sandbox <b>never executed a command</b> — diagnosed, symmetric across conditions</li>
+      <li>The gate was auto-approved in the matrix, so "wrong action" means "wrong proposal"</li>
+    </ul></div>
+    <div class="col"><ul>
+      <li><b class="acc">Next:</b> the two fixes above, then calibrate novelty against S6</li>
+      <li>Widen the corpus — S4 drift, S5 one-replica; a second model</li>
+      <li><b class="acc">Then:</b> agent-session forensics — point the same engine at TrueForge's own session logs to diagnose <i>other agents'</i> loops and token burns</li>
+    </ul></div>
+  </div>
+  <div class="note">Deliberately not claimed: whether the advantage survives better models. The pre-registered split prediction is that the accuracy gap shrinks while the token gap persists. Untested.</div>
+</section>
+
+<!-- 13 ...................................................... VIDEO CARD -->
+<section class="slide" style="justify-content:center;align-items:flex-start">
+  <div class="kicker">End card <span class="tag card">video card A3 · 2:52–2:55</span></div>
+  <h1>Spyglass</h1>
+  <div class="quote">Make the evidence better instead of the model smarter — and measure whether it worked.</div>
+  <div class="note mono" style="font-size:clamp(14px,1.6vw,26px);margin-top:3vh">
+    github.com/vivekjami/spyglass<br>
+    <span class="acc">just demo</span><br>
+    36 runs · every one committed
+  </div>
+</section>
+
+</div>
+
+<footer><span id="lbl"></span><span class="dim">← → navigate · f full screen · c clean (hide this, for recording) · p print/PDF</span></footer>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  const lbl=document.getElementById('lbl');
+  const cards={2:'A1',9:'A2',12:'A3'};
+  let i=0;
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('on',k===i));
+    lbl.textContent=`${i+1} / ${slides.length}`+(cards[i]?`  ·  video card ${cards[i]}`:'');
+    location.hash=i+1;
+  }
+  addEventListener('keydown',e=>{
+    if(['ArrowRight',' ','PageDown','n'].includes(e.key)){e.preventDefault();show(i+1)}
+    else if(['ArrowLeft','PageUp','b'].includes(e.key)){show(i-1)}
+    else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(slides.length-1)}
+    else if(e.key==='f'){document.documentElement.requestFullscreen?.()}
+    else if(e.key==='c'){document.body.classList.toggle('clean')}
+    else if(e.key==='p'){window.print()}
+  });
+  addEventListener('click',e=>{ if(!e.target.closest('footer')) show(i+1) });
+  // ?clean in the query string starts in clean mode -- lets a script record a
+  // card with no presenter chrome, without sending a keystroke.
+  if(/(^|[?&])clean\b/.test(location.search)) document.body.classList.add('clean');
+  show(parseInt(location.hash.slice(1))-1||0);
+</script>
+</body>
+</html>

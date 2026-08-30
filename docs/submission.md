@@ -89,7 +89,12 @@ run files.
 
 Only these need a human; everything else is in the repository.
 
-1. **Record the video** — follow [`demo-day.md`](demo-day.md) end to end:
+1. **Record the video** — **a silent 1:55 cut is already recorded**:
+   `~/spyglass-recordings/spyglass-demo-draft.mp4`. See
+   [`demo-recording.md`](demo-recording.md) for what is in it, the narration
+   timed to it, and the one ffmpeg command that lays your voiceover on.
+   [`presentation.md`](presentation.md) is the content plan behind it;
+   [`demo-day.md`](demo-day.md) is how to reshoot anything:
    setup, recorder, the four captures, the second-by-second cut, the
    word-for-word narration and the ffmpeg assembly. Two takes of everything,
    voiceover recorded separately, ≤ 3:00. Upload it.
