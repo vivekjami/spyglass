@@ -12,7 +12,7 @@ internal target 22:00 IST. Form: <https://forms.gle/PxGLsWW1HPyroQ5u9>.
 | Demo video (≈3:00) | _paste the link after recording — see [`demo.md`](demo.md) → Filming-day runbook_ |
 | Write-up | the section below (also `docs/blog/draft.md` for the long form) |
 | Qodo Code Review Evidence | `README.md` → [Qodo Code Review Evidence](../README.md#qodo-code-review-evidence) |
-| TrueForge capabilities demonstrated | MCP tool access (4 servers, 21 tools), the human approval gate on `rollback`, the sandbox (agent-paced verification), dynamic sub-agents, programmatic sessions over the REST API |
+| TrueForge capabilities demonstrated | MCP tool access (4 servers, 21 tools), the human approval gate on `rollback`, engine-judged and engine-paced post-action verification, programmatic sessions / turns / approvals / token accounting over the REST API, dynamic sub-agents (configured and briefed; the fan-out is conditional and did not trigger on these scenarios). The sandbox is enabled in every condition and the agent calls it, but it never executed a command — a harness bootstrap failure diagnosed in `docs/phase11-findings.md` F1, symmetric across conditions |
 
 ## Write-up (paste into the form)
 
@@ -49,7 +49,7 @@ behind `require_approval_for_tools`; the agent can only *propose* — the
 deployer mints the proposal id, snapshots the live version and stamps an
 expiry, and execution is idempotent, TOCTOU-checked and refused if the
 restatement differs. Recovery is judged by the engine (`verify_recovery`),
-never declared by the model; the agent paces its checks with the sandbox.
+never declared by the model, and the engine paces the checks too — `verify_recovery` holds a call made inside the interval open for the remainder instead of refusing it, so the agent neither sleeps nor polls (SOP v8).
 `context_management` is pinned off in every condition so the harness does not
 shape the control group's evidence (ADR-016). Sessions, turns, approvals and
 cross-thread token accounting are driven programmatically for the benchmark.
@@ -89,15 +89,26 @@ run files.
 
 Only these need a human; everything else is in the repository.
 
-1. **Authorize Qodo Merge on the repository** (GitHub → Marketplace → Qodo
-   Merge, or <https://github.com/apps/qodo-merge-pro>), then comment
-   `/review` on PR #10 and PR #11 (Qodo also reviews on open by default).
-   Paste the review links into the README's *Qodo status* line.
-2. **Merge in stack order** so `main` ends up with everything: #11 → #10 →
-   then the chain below it is already merged into `phase-1-incident-environment`;
-   open one PR `phase-1-incident-environment → main` (or merge `phase-11-demo`
-   into main directly once #10/#11 are in) — the README's *Qodo* section and
-   `docs/progress.md` link the trail either way.
-3. **Record the video** per [`demo.md`](demo.md) → Filming-day runbook (two
-   takes; voiceover separate; ≤ 3:00), upload, paste the link above.
-4. **Submit the form** with the table at the top of this file.
+1. **Record the video** per [`demo.md`](demo.md) → Filming-day runbook
+   (preflight, four captures, resets, and the narration written from the
+   measured tables; two takes, voiceover separate, ≤ 3:00). Upload it.
+
+2. **Authorize Qodo Merge on the repository** — GitHub → Marketplace →
+   [Qodo Merge](https://github.com/apps/qodo-merge-pro), one click by the
+   repository owner. It was never installed while PRs #1–#11 were open, which
+   is why the README's *Qodo Code Review Evidence* section says so plainly
+   instead of claiming a review that did not happen.
+
+3. **Put the video link in through a pull request** — not a push to `main`.
+   The link has to be added to this file's table and to the README anyway, so
+   it is the natural last change: branch, edit, open the PR, let Qodo review
+   it, then merge. That produces one genuinely Qodo-reviewed PR to link from
+   the *Qodo status* line, and it is the only remaining chance to have one —
+   every earlier PR is already merged. Update that line with the review URL.
+
+4. **Submit the form** with the table at the top of this file, before
+   **22:00 IST** (the hard deadline is 00:30 IST Monday / 20:00 London
+   Sunday).
+
+`main` already carries the whole build: phases 0–11 landed through pull
+requests (#1–#11 plus the integration PR), never a direct push.
