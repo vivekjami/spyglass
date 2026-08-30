@@ -369,7 +369,7 @@ entirely in the action path: the causal check and the engine-judged
 verification, which the baseline does not have (it re-reads a metric twice
 and declares victory). What the evidence plane changes on those three is
 the shape of the work and what the postmortem is made of: 7–22 evidence
-ids per report, 91–100 % of the root-cause citations relevant, each
+ids per report, 86–100 % of the root-cause citations relevant, each
 re-checkable against the ledger. The baseline's claims cannot be re-checked
 at all. That is a property worth having; it is not the speed-up the README
 predicted.
@@ -397,7 +397,7 @@ Both are recorded rather than patched: the matrix stays the matrix.
 
 **Things the measurement itself got wrong.** The pre-registered evidence
 precision counts the causal check's and the verification's ids as
-non-relevant, so it prints 46 % on S2 where the root-cause citations are 88–100
+non-relevant, so it prints 47 % on S2 where the root-cause citations are 86–100
 % — the metric's denominator, reported as scored, with the post-hoc number
 beside it and labelled. Time-to-first-hypothesis equals wall time because
 this model emits no interim prose. And the ablation runs' ledger re-checks

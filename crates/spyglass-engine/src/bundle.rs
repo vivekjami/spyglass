@@ -73,6 +73,7 @@ enum Kind {
     Deploy,
 }
 
+#[allow(dead_code)]
 impl Kind {
     fn as_str(self) -> &'static str {
         match self {
@@ -90,6 +91,7 @@ struct Fact {
     r#ref: String,
     /// The fact's own time: first_seen | at | deploy ts.
     t: DateTime<Utc>,
+    #[allow(dead_code)] // kept for the dedupe rules' debug output
     services: BTreeSet<String>,
     factors: Factors,
     /// The compact item returned in the bundle (score fields added later).
@@ -105,13 +107,25 @@ fn s<'a>(v: &'a Value, k: &str) -> &'a str {
     v.get(k).and_then(|x| x.as_str()).unwrap_or("")
 }
 fn ts(v: &Value, k: &str) -> Option<DateTime<Utc>> {
-    v.get(k).and_then(|x| x.as_str()).and_then(|x| x.parse().ok())
+    v.get(k)
+        .and_then(|x| x.as_str())
+        .and_then(|x| x.parse().ok())
 }
 fn strs(v: &Value, k: &str) -> BTreeSet<String> {
-    v.get(k).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default()
+    v.get(k)
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 fn series_labels(series: &str) -> BTreeMap<String, String> {
-    let inner = series.find('{').map(|i| &series[i + 1..series.len() - 1]).unwrap_or("");
+    let inner = series
+        .find('{')
+        .map(|i| &series[i + 1..series.len() - 1])
+        .unwrap_or("");
     inner
         .split(',')
         .filter_map(|kv| kv.split_once('='))
@@ -122,13 +136,28 @@ fn series_labels(series: &str) -> BTreeMap<String, String> {
 pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOutput, Value)> {
     let cfg = &engine.cfg;
     let mut w: RankingCfg = cfg.ranking.clone();
-    if let Some(x) = a.weights.w_n { w.w_n = x }
-    if let Some(x) = a.weights.w_t { w.w_t = x }
-    if let Some(x) = a.weights.w_s { w.w_s = x }
-    if let Some(x) = a.weights.w_d { w.w_d = x }
-    if let Some(x) = a.weights.w_f { w.w_f = x }
-    if let Some(x) = a.weights.w_r { w.w_r = x }
-    let limit = a.limit.unwrap_or(cfg.bounds.max_items).clamp(1, cfg.bounds.max_items);
+    if let Some(x) = a.weights.w_n {
+        w.w_n = x
+    }
+    if let Some(x) = a.weights.w_t {
+        w.w_t = x
+    }
+    if let Some(x) = a.weights.w_s {
+        w.w_s = x
+    }
+    if let Some(x) = a.weights.w_d {
+        w.w_d = x
+    }
+    if let Some(x) = a.weights.w_f {
+        w.w_f = x
+    }
+    if let Some(x) = a.weights.w_r {
+        w.w_r = x
+    }
+    let limit = a
+        .limit
+        .unwrap_or(cfg.bounds.max_items)
+        .clamp(1, cfg.bounds.max_items);
     let corr = cfg.windows.deploy_correlation_secs as f64;
 
     // One frozen window for every candidate source.
@@ -139,11 +168,21 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
             Some(x) => resolve(&store, cfg, Some(x))?,
             None => Window::ending_at(watermark, cfg.bundle.incident_window_secs),
         };
-        let base = Window { from: win.from - Duration::seconds(cfg.bundle.baseline_secs), to: win.from };
-        let m: HashMap<String, String> = cfg.services.iter().map(|x| (x.name.clone(), x.service.clone())).collect();
+        let base = Window {
+            from: win.from - Duration::seconds(cfg.bundle.baseline_secs),
+            to: win.from,
+        };
+        let m: HashMap<String, String> = cfg
+            .services
+            .iter()
+            .map(|x| (x.name.clone(), x.service.clone()))
+            .collect();
         (win, base, m)
     };
-    let warg = |x: Window| WindowArg { from: Some(fmt_ts(x.from)), to: Some(fmt_ts(x.to)) };
+    let warg = |x: Window| WindowArg {
+        from: Some(fmt_ts(x.from)),
+        to: Some(fmt_ts(x.to)),
+    };
     let resolved = json!({"window": win, "baseline": base, "focus_service": a.focus_service, "limit": limit, "weights": w, "ablation": cfg.ablation});
 
     // Candidates, through the tools' own functions (each takes the lock briefly).
@@ -151,30 +190,61 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     // at all -- changepoints and deploys only; templates are reachable through
     // search_logs. That is "Spyglass without the headline tool".
     let templates: Vec<Value> = if cfg.novelty.enabled {
-        let (nov, _) = crate::tools::novel_templates(engine, &NoveltyArgs {
-            window: warg(win), baseline: warg(base), min_score: None, limit: Some(cfg.bounds.max_items), services: vec![], level: None,
-        })?;
+        let (nov, _) = crate::tools::novel_templates(
+            engine,
+            &NoveltyArgs {
+                window: warg(win),
+                baseline: warg(base),
+                min_score: None,
+                limit: Some(cfg.bounds.max_items),
+                services: vec![],
+                level: None,
+            },
+        )?;
         nov.payload["items"].as_array().cloned().unwrap_or_default()
     } else {
         Vec::new()
     };
-    let (cps, _) = crate::tools::detect_changepoints(engine, &ChangepointArgs {
-        metrics: vec![], service: None, route: None, window: warg(win), baseline: WindowArg::default(), limit: Some(cfg.bounds.max_items),
-    })?;
+    let (cps, _) = crate::tools::detect_changepoints(
+        engine,
+        &ChangepointArgs {
+            metrics: vec![],
+            service: None,
+            route: None,
+            window: warg(win),
+            baseline: WindowArg::default(),
+            limit: Some(cfg.bounds.max_items),
+        },
+    )?;
     let changepoints: Vec<Value> = cps.payload["items"].as_array().cloned().unwrap_or_default();
 
     // Topology over logical services, for relevance and cascade connectivity.
-    let svc_of = |name: &str| instance_service.get(name).cloned().unwrap_or_else(|| name.to_string());
+    let svc_of = |name: &str| {
+        instance_service
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
+    };
     let edges: Vec<(String, String)> = cfg
         .services
         .iter()
-        .flat_map(|x| x.upstreams.iter().map(move |u| (x.service.clone(), svc_of(u))))
+        .flat_map(|x| {
+            x.upstreams
+                .iter()
+                .map(move |u| (x.service.clone(), svc_of(u)))
+        })
         .collect();
-    let hops: Option<HashMap<String, usize>> = a.focus_service.as_deref().map(|fs| rank::hop_distances(&svc_of(fs), &edges));
+    let hops: Option<HashMap<String, usize>> = a
+        .focus_service
+        .as_deref()
+        .map(|fs| rank::hop_distances(&svc_of(fs), &edges));
     let relevance_of = |services: &BTreeSet<String>| -> f64 {
         match &hops {
             None => 1.0,
-            Some(h) => services.iter().map(|x| rank::relevance(h.get(&svc_of(x)).copied(), w.relevance_hop_decay)).fold(0.0, f64::max),
+            Some(h) => services
+                .iter()
+                .map(|x| rank::relevance(h.get(&svc_of(x)).copied(), w.relevance_hop_decay))
+                .fold(0.0, f64::max),
         }
     };
     let connected = |a: &str, b: &str| -> bool {
@@ -183,17 +253,30 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     };
 
     // Store-side facts: deploys, coverage, exemplar request ids.
-    let (deploys, events_scanned, bytes_scanned, templates_in_window, req_ids_of): (Vec<spyglass_core::DeployEvent>, usize, usize, usize, HashMap<String, BTreeSet<String>>) = {
+    let (deploys, events_scanned, bytes_scanned, templates_in_window, req_ids_of): (
+        Vec<spyglass_core::DeployEvent>,
+        usize,
+        usize,
+        usize,
+        HashMap<String, BTreeSet<String>>,
+    ) = {
         let store = engine.store.read().expect("store lock");
         let referenced: BTreeSet<String> = changepoints
             .iter()
-            .filter_map(|c| c.get("nearest_deploy").and_then(|d| d.get("deploy_id")).and_then(|x| x.as_str()).map(str::to_string))
+            .filter_map(|c| {
+                c.get("nearest_deploy")
+                    .and_then(|d| d.get("deploy_id"))
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string)
+            })
             .collect();
         let deploys: Vec<_> = store
             .deploys
             .iter()
             .filter(|d| d.deploy_id.is_some() && d.ts <= win.to)
-            .filter(|d| win.contains(d.ts) || referenced.contains(d.deploy_id.as_deref().unwrap_or("")))
+            .filter(|d| {
+                win.contains(d.ts) || referenced.contains(d.deploy_id.as_deref().unwrap_or(""))
+            })
             .cloned()
             .collect();
         let mut n = 0usize;
@@ -219,7 +302,9 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
 
     // The onset estimate T0: the earliest error changepoint, else the
     // earliest novel ERROR template, else the window end.
-    let is_error_cp = |c: &Value| matches!(s(c, "metric"), "error_rate" | "errors_total") && s(c, "direction") == "up";
+    let is_error_cp = |c: &Value| {
+        matches!(s(c, "metric"), "error_rate" | "errors_total") && s(c, "direction") == "up"
+    };
     let (t0, t0_source) = changepoints
         .iter()
         .filter(|c| is_error_cp(c))
@@ -235,9 +320,26 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
                 .map(|t| (t, "earliest_novel_error_template"))
         })
         .unwrap_or((win.to, "window_end"));
-    let prox = |t: DateTime<Utc>| rank::proximity((t - t0).num_milliseconds() as f64 / 1000.0, w.proximity_tau_secs);
-    let deploy_near = |t: DateTime<Utc>| deploys.iter().any(|d| ((t - d.ts).num_milliseconds() as f64 / 1000.0).abs() <= corr);
-    let change_times: Vec<DateTime<Utc>> = changepoints.iter().filter_map(|c| ts(c, "at")).chain(templates.iter().filter_map(|t| ts(t, "first_seen_in_window"))).collect();
+    let prox = |t: DateTime<Utc>| {
+        rank::proximity(
+            (t - t0).num_milliseconds() as f64 / 1000.0,
+            w.proximity_tau_secs,
+        )
+    };
+    let deploy_near = |t: DateTime<Utc>| {
+        deploys
+            .iter()
+            .any(|d| ((t - d.ts).num_milliseconds() as f64 / 1000.0).abs() <= corr)
+    };
+    let change_times: Vec<DateTime<Utc>> = changepoints
+        .iter()
+        .filter_map(|c| ts(c, "at"))
+        .chain(
+            templates
+                .iter()
+                .filter_map(|t| ts(t, "first_seen_in_window")),
+        )
+        .collect();
 
     let mut facts: Vec<Fact> = Vec::new();
 
@@ -253,7 +355,10 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     }
     for i in 0..n_t {
         for j in i + 1..n_t {
-            let (a, b) = (&req_ids_of[s(&templates[i], "template_id")], &req_ids_of[s(&templates[j], "template_id")]);
+            let (a, b) = (
+                &req_ids_of[s(&templates[i], "template_id")],
+                &req_ids_of[s(&templates[j], "template_id")],
+            );
             if !a.is_empty() && a.intersection(b).next().is_some() {
                 let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
                 if ri != rj {
@@ -271,9 +376,19 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         // origin: earliest first_seen, then has_stack, then severity
         members.sort_by(|&x, &y| {
             let (tx, ty) = (&templates[x], &templates[y]);
-            ts(tx, "first_seen_in_window").cmp(&ts(ty, "first_seen_in_window"))
-                .then(tx["has_stack"].as_bool().cmp(&ty["has_stack"].as_bool()).reverse())
-                .then(rank::severity_of_level(s(ty, "dominant_level")).partial_cmp(&rank::severity_of_level(s(tx, "dominant_level"))).unwrap_or(std::cmp::Ordering::Equal))
+            ts(tx, "first_seen_in_window")
+                .cmp(&ts(ty, "first_seen_in_window"))
+                .then(
+                    tx["has_stack"]
+                        .as_bool()
+                        .cmp(&ty["has_stack"].as_bool())
+                        .reverse(),
+                )
+                .then(
+                    rank::severity_of_level(s(ty, "dominant_level"))
+                        .partial_cmp(&rank::severity_of_level(s(tx, "dominant_level")))
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
         });
         let root = &templates[members[0]];
         let first_seen = ts(root, "first_seen_in_window").unwrap_or(win.to);
@@ -294,7 +409,11 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
             proximity: prox(first_seen),
             severity: rank::severity_of_level(&level),
             deploy_correlation: if deploy_near(first_seen) { 1.0 } else { 0.0 },
-            freq_shift: if s(root, "novelty_reason") == "first_seen_in_window" { 1.0 } else { rank::freq_shift_of_ratio(ratio, cfg.novelty.burst_log2_scale) },
+            freq_shift: if s(root, "novelty_reason") == "first_seen_in_window" {
+                1.0
+            } else {
+                rank::freq_shift_of_ratio(ratio, cfg.novelty.burst_log2_scale)
+            },
             relevance: relevance_of(&services),
         };
         let excerpt_bytes = s(root, "excerpt").len();
@@ -310,9 +429,20 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         let mut record = root.clone();
         if let Value::Object(m) = &mut record {
             m.insert("cascade".into(), item["cascade"].clone());
-            m.insert("bundle_ref".into(), Value::String(s(root, "template_id").to_string()));
+            m.insert(
+                "bundle_ref".into(),
+                Value::String(s(root, "template_id").to_string()),
+            );
         }
-        facts.push(Fact { kind: Kind::Template, r#ref: s(root, "template_id").to_string(), t: first_seen, services, factors, item, record });
+        facts.push(Fact {
+            kind: Kind::Template,
+            r#ref: s(root, "template_id").to_string(),
+            t: first_seen,
+            services,
+            factors,
+            item,
+            record,
+        });
     }
 
     // ---- changepoints: error cascades on connected services ----------------
@@ -321,7 +451,10 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     order.sort_by_key(|&i| ts(&changepoints[i], "at"));
     let cp_service = |c: &Value| -> String {
         let l = series_labels(s(c, "series"));
-        l.get("service").cloned().or_else(|| l.get("instance").map(|i| svc_of(i))).unwrap_or_default()
+        l.get("service")
+            .cloned()
+            .or_else(|| l.get("instance").map(|i| svc_of(i)))
+            .unwrap_or_default()
     };
     for &i in &order {
         if used[i] {
@@ -355,8 +488,20 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         };
         let (bm, rm) = (f(origin, "baseline_mean"), f(origin, "run_mean"));
         let ratio = match dir {
-            "up" => if bm > 0.0 { Some(rm / bm) } else { None },
-            _ => if rm > 0.0 { Some(bm / rm) } else { None },
+            "up" => {
+                if bm > 0.0 {
+                    Some(rm / bm)
+                } else {
+                    None
+                }
+            }
+            _ => {
+                if rm > 0.0 {
+                    Some(bm / rm)
+                } else {
+                    None
+                }
+            }
         };
         // Novelty is defined the same way for every kind: did this behaviour
         // first appear in the window? A template first seen there scores 1.0
@@ -368,7 +513,11 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
             novelty: shift,
             proximity: prox(at),
             severity,
-            deploy_correlation: if origin.get("nearest_deploy").is_some_and(|d| !d.is_null()) { 1.0 } else { 0.0 },
+            deploy_correlation: if origin.get("nearest_deploy").is_some_and(|d| !d.is_null()) {
+                1.0
+            } else {
+                0.0
+            },
             freq_shift: shift,
             relevance: relevance_of(&services),
         };
@@ -384,16 +533,29 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         let mut record = origin.clone();
         if let Value::Object(m) = &mut record {
             m.insert("cascade".into(), item["cascade"].clone());
-            m.insert("bundle_ref".into(), Value::String(s(origin, "series").to_string()));
+            m.insert(
+                "bundle_ref".into(),
+                Value::String(s(origin, "series").to_string()),
+            );
         }
-        facts.push(Fact { kind: Kind::Changepoint, r#ref: s(origin, "series").to_string(), t: at, services, factors, item, record });
+        facts.push(Fact {
+            kind: Kind::Changepoint,
+            r#ref: s(origin, "series").to_string(),
+            t: at,
+            services,
+            factors,
+            item,
+            record,
+        });
     }
 
     // ---- deploys -------------------------------------------------------------
     for d in &deploys {
         let did = d.deploy_id.clone().unwrap_or_default();
         let services = BTreeSet::from([d.service.clone()]);
-        let correlated = change_times.iter().any(|t| ((*t - d.ts).num_milliseconds() as f64 / 1000.0).abs() <= corr);
+        let correlated = change_times
+            .iter()
+            .any(|t| ((*t - d.ts).num_milliseconds() as f64 / 1000.0).abs() <= corr);
         let factors = Factors {
             novelty: 1.0,
             proximity: prox(d.ts),
@@ -412,13 +574,27 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
             m.insert("journal_kind".into(), Value::String(d.kind.clone()));
             m.insert("bundle_ref".into(), Value::String(did.clone()));
         }
-        facts.push(Fact { kind: Kind::Deploy, r#ref: did, t: d.ts, services, factors, item, record });
+        facts.push(Fact {
+            kind: Kind::Deploy,
+            r#ref: did,
+            t: d.ts,
+            services,
+            factors,
+            item,
+            record,
+        });
     }
 
     // ---- score, order, bound ---------------------------------------------------
-    let scored: Vec<(Score, usize)> = facts.iter().enumerate().map(|(i, x)| (rank::score(&x.factors, &w), i)).collect();
+    let scored: Vec<(Score, usize)> = facts
+        .iter()
+        .enumerate()
+        .map(|(i, x)| (rank::score(&x.factors, &w), i))
+        .collect();
     let by_score = |x: &(Score, usize), y: &(Score, usize)| {
-        y.0.total.partial_cmp(&x.0.total).unwrap_or(std::cmp::Ordering::Equal)
+        y.0.total
+            .partial_cmp(&x.0.total)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then(facts[x.1].kind.cmp(&facts[y.1].kind))
             .then(facts[x.1].t.cmp(&facts[y.1].t))
             .then(facts[x.1].r#ref.cmp(&facts[y.1].r#ref))
@@ -435,8 +611,15 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     head.sort_by(by_score);
     let head_idx: HashSet<usize> = head.iter().map(|x| x.1).collect();
     // Pure-score rank, kept on every item so the head's effect is visible.
-    let score_rank: HashMap<usize, usize> = rest.iter().enumerate().map(|(pos, (_, i))| (*i, pos + 1)).collect();
-    let ordered: Vec<(Score, usize)> = head.into_iter().chain(rest.into_iter().filter(|x| !head_idx.contains(&x.1))).collect();
+    let score_rank: HashMap<usize, usize> = rest
+        .iter()
+        .enumerate()
+        .map(|(pos, (_, i))| (*i, pos + 1))
+        .collect();
+    let ordered: Vec<(Score, usize)> = head
+        .into_iter()
+        .chain(rest.into_iter().filter(|x| !head_idx.contains(&x.1)))
+        .collect();
     let available = ordered.len();
 
     let budget = cfg.bundle.max_bytes.saturating_sub(1400); // envelope + relationships reserve
@@ -452,8 +635,14 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
         let mut item = fct.item.clone();
         if let Value::Object(m) = &mut item {
             m.insert("score".into(), json!(sc.total));
-            m.insert("score_rank".into(), json!(score_rank.get(i).copied().unwrap_or(0)));
-            m.insert("factors".into(), json!({"n": sc.n, "t": sc.t, "s": sc.s, "d": sc.d, "f": sc.f, "r": sc.r}));
+            m.insert(
+                "score_rank".into(),
+                json!(score_rank.get(i).copied().unwrap_or(0)),
+            );
+            m.insert(
+                "factors".into(),
+                json!({"n": sc.n, "t": sc.t, "s": sc.s, "d": sc.d, "f": sc.f, "r": sc.r}),
+            );
         }
         cap_item(&mut item, cfg.bounds.max_bytes_per_item);
         let sz = serde_json::to_vec(&item).map(|b| b.len()).unwrap_or(0) + 1;
@@ -501,12 +690,26 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
             }
         }
     }
-    rels.sort_by(|x, y| s(x, "type").cmp(s(y, "type")).then(s(x, "from").cmp(s(y, "from"))).then(s(x, "to").cmp(s(y, "to"))));
+    rels.sort_by(|x, y| {
+        s(x, "type")
+            .cmp(s(y, "type"))
+            .then(s(x, "from").cmp(s(y, "from")))
+            .then(s(x, "to").cmp(s(y, "to")))
+    });
 
-    let bundle_id = format!("B-{}", &sha256_hex(serde_json::to_string(&resolved).unwrap_or_default().as_bytes())[..12]);
+    let bundle_id = format!(
+        "B-{}",
+        &sha256_hex(
+            serde_json::to_string(&resolved)
+                .unwrap_or_default()
+                .as_bytes()
+        )[..12]
+    );
     let assemble = |items: &Vec<Value>, rels: &Vec<Value>, truncated: bool| -> Value {
         let items_returned = items.len();
-        let bytes_returned = serde_json::to_vec(&json!({"items": items, "relationships": rels})).map(|b| b.len()).unwrap_or(0);
+        let bytes_returned = serde_json::to_vec(&json!({"items": items, "relationships": rels}))
+            .map(|b| b.len())
+            .unwrap_or(0);
         json!({
             "bundle_id": bundle_id,
             "window": win, "baseline": base,
@@ -529,24 +732,67 @@ pub fn build_evidence_bundle(engine: &Engine, a: &BundleArgs) -> Result<(ToolOut
     };
     let mut payload = assemble(&items, &rels, available > items.len());
     // Hard byte bound on the whole payload: drop from the tail until it fits.
-    while serde_json::to_vec(&payload).map(|b| b.len()).unwrap_or(0) > cfg.bundle.max_bytes && !items.is_empty() {
+    while serde_json::to_vec(&payload).map(|b| b.len()).unwrap_or(0) > cfg.bundle.max_bytes
+        && !items.is_empty()
+    {
         items.pop();
         records.pop();
         chosen.pop();
         let keep: HashSet<&str> = chosen.iter().map(|&i| facts[i].r#ref.as_str()).collect();
-        let rels2: Vec<Value> = rels.iter().filter(|r| keep.contains(s(r, "from")) && keep.contains(s(r, "to"))).cloned().collect();
+        let rels2: Vec<Value> = rels
+            .iter()
+            .filter(|r| keep.contains(s(r, "from")) && keep.contains(s(r, "to")))
+            .cloned()
+            .collect();
         payload = assemble(&items, &rels2, true);
     }
 
-    let top: Vec<String> = items.iter().take(3).map(|it| match s(it, "kind") {
-        "novel_template" => format!("T {} [{}] {:.2}", s(it, "pattern"), s(it, "level"), f(it, "score")),
-        "changepoint" => format!("CP {} {} {:.2}", s(it, "series"), s(it, "direction"), f(it, "score")),
-        _ => format!("D {} {} {}→{} {:.2}", s(it, "deploy_id"), s(it, "service"), s(it, "from_version"), s(it, "version"), f(it, "score")),
-    }).collect();
+    let top: Vec<String> = items
+        .iter()
+        .take(3)
+        .map(|it| match s(it, "kind") {
+            "novel_template" => format!(
+                "T {} [{}] {:.2}",
+                s(it, "pattern"),
+                s(it, "level"),
+                f(it, "score")
+            ),
+            "changepoint" => format!(
+                "CP {} {} {:.2}",
+                s(it, "series"),
+                s(it, "direction"),
+                f(it, "score")
+            ),
+            _ => format!(
+                "D {} {} {}→{} {:.2}",
+                s(it, "deploy_id"),
+                s(it, "service"),
+                s(it, "from_version"),
+                s(it, "version"),
+                f(it, "score")
+            ),
+        })
+        .collect();
     let cov = &payload["coverage"];
     let summary = format!(
         "build_evidence_bundle → {} items / {} B from {} events ({} B) in window; T0 {} ({}); top: {}",
-        items.len(), cov["bytes_returned"], events_scanned, bytes_scanned, fmt_ts(t0), t0_source, top.join(" | ")
+        items.len(),
+        cov["bytes_returned"],
+        events_scanned,
+        bytes_scanned,
+        fmt_ts(t0),
+        t0_source,
+        top.join(" | ")
     );
-    Ok((ToolOutput { payload, summary, window: Some(win), deterministic: true, available, records: Some(records) }, resolved))
+    Ok((
+        ToolOutput {
+            payload,
+            summary,
+            window: Some(win),
+            deterministic: true,
+            available,
+            records: Some(records),
+        },
+        resolved,
+    ))
 }

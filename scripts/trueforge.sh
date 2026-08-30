@@ -13,19 +13,22 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=/dev/null
-source "$ROOT/scripts/env.sh" >/dev/null
+source "$ROOT/scripts/env.sh" >/dev/null || exit 1
 
+# The harness version every phase was validated against (Phase 0: 0.1.4).
+# Override with TRUEFORGE_VERSION=latest to try a newer release deliberately.
+TRUEFORGE_VERSION="${TRUEFORGE_VERSION:-0.1.4}"
 LOG="$ROOT/.local/trueforge.log"
 PORT="${TRUEFORGE_PORT:-8790}"
 
-port_pid() { ss -tlnpH "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
+port_pid() { ss -tlnpH "sport = :$PORT" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1; }
 
 case "${1:-status}" in
   start)
     if [ -n "$(port_pid)" ]; then echo "already running on :$PORT (pid $(port_pid))"; exit 0; fi
     mkdir -p "$(dirname "$LOG")"
     [ -f "$LOG" ] && mv "$LOG" "$LOG.$(date +%s)"
-    nohup npx -y @truefoundry/trueforge@latest >"$LOG" 2>&1 &
+    nohup npx -y "@truefoundry/trueforge@${TRUEFORGE_VERSION}" >"$LOG" 2>&1 &
     echo "starting (log: $LOG) ..."
     for _ in $(seq 1 60); do
       if curl -sf -o /dev/null "$TRUEFORGE_URL/api/v1/capabilities"; then

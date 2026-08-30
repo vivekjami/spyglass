@@ -23,6 +23,7 @@ pub mod replay;
 pub mod tools;
 pub mod verify;
 
+use std::path::Path;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fs,
@@ -112,19 +113,26 @@ impl Store {
         let tokens: Vec<String> = e.pattern.split_whitespace().map(str::to_string).collect();
         let (cid, _created) = self.drain.insert_keyed(&e.level, tokens);
         e.template_id = format!("T{cid}");
-        e.pattern = self.drain.cluster(cid).map(|c| c.template()).unwrap_or_else(|| e.pattern.clone());
+        e.pattern = self
+            .drain
+            .cluster(cid)
+            .map(|c| c.template())
+            .unwrap_or_else(|| e.pattern.clone());
         self.earliest_ts = Some(self.earliest_ts.map_or(e.ts, |t| t.min(e.ts)));
-        let t = self.templates.entry(e.template_id.clone()).or_insert_with(|| Template {
-            template_id: e.template_id.clone(),
-            pattern: e.pattern.clone(),
-            first_seen: e.ts,
-            last_seen: e.ts,
-            count: 0,
-            level_hist: BTreeMap::new(),
-            services: BTreeSet::new(),
-            instances: BTreeSet::new(),
-            example_idx: vec![],
-        });
+        let t = self
+            .templates
+            .entry(e.template_id.clone())
+            .or_insert_with(|| Template {
+                template_id: e.template_id.clone(),
+                pattern: e.pattern.clone(),
+                first_seen: e.ts,
+                last_seen: e.ts,
+                count: 0,
+                level_hist: BTreeMap::new(),
+                services: BTreeSet::new(),
+                instances: BTreeSet::new(),
+                example_idx: vec![],
+            });
         t.pattern = e.pattern.clone(); // a merge may have added wildcards since
         t.count += 1;
         t.first_seen = t.first_seen.min(e.ts);
@@ -140,10 +148,10 @@ impl Store {
             .and_modify(|w| *w = (*w).max(e.ts))
             .or_insert(e.ts);
         self.by_event_id.insert(e.event_id.clone(), idx);
-        if e.kind.as_deref() == Some("request_capture") {
-            if let Some(r) = &e.req_id {
-                self.captures.entry(r.clone()).or_insert(idx);
-            }
+        if e.kind.as_deref() == Some("request_capture")
+            && let Some(r) = &e.req_id
+        {
+            self.captures.entry(r.clone()).or_insert(idx);
         }
         self.ingested += 1;
         self.events.push(e);
@@ -158,7 +166,11 @@ impl Store {
     /// Newest log timestamp across every instance -- the "now" of the
     /// evidence, as opposed to wall-clock now.
     pub fn newest_log_ts(&self) -> Option<DateTime<Utc>> {
-        self.watermarks.iter().filter(|(k, _)| k.starts_with("log:")).map(|(_, v)| *v).max()
+        self.watermarks
+            .iter()
+            .filter(|(k, _)| k.starts_with("log:"))
+            .map(|(_, v)| *v)
+            .max()
     }
 
     /// The newest timestamp every ACTIVE log source has been read past: a
@@ -173,14 +185,25 @@ impl Store {
         const ACTIVE_SECS: i64 = 5;
         let newest = self.newest_log_ts()?;
         let cutoff = newest - chrono::Duration::seconds(ACTIVE_SECS);
-        self.watermarks.iter().filter(|(k, _)| k.starts_with("log:")).map(|(_, v)| *v).filter(|v| *v >= cutoff).min()
+        self.watermarks
+            .iter()
+            .filter(|(k, _)| k.starts_with("log:"))
+            .map(|(_, v)| *v)
+            .filter(|v| *v >= cutoff)
+            .min()
     }
 
-    pub fn events_in<'a>(&'a self, w: &'a Window, services: &'a [String]) -> impl Iterator<Item = &'a Event> + 'a {
+    pub fn events_in<'a>(
+        &'a self,
+        w: &'a Window,
+        services: &'a [String],
+    ) -> impl Iterator<Item = &'a Event> + 'a {
         self.events
             .iter()
             .filter(move |e| w.contains(e.ts))
-            .filter(move |e| services.is_empty() || services.iter().any(|s| *s == e.service || *s == e.instance))
+            .filter(move |e| {
+                services.is_empty() || services.iter().any(|s| *s == e.service || *s == e.instance)
+            })
     }
 }
 
@@ -203,8 +226,11 @@ pub struct Investigation {
 }
 
 impl Investigation {
-    fn new(dir: &PathBuf, id: &str) -> Self {
-        let safe: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    fn new(dir: &Path, id: &str) -> Self {
+        let safe: String = id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect();
         Self {
             id: id.to_string(),
             next_n: 1,
@@ -223,7 +249,11 @@ impl Investigation {
     /// tool error the agent sees and must synthesise around.
     pub fn admit(&mut self, limits: &spyglass_core::LimitsCfg) -> std::result::Result<(), String> {
         let now = std::time::Instant::now();
-        while self.recent_calls.front().is_some_and(|t| now.duration_since(*t).as_secs() >= 60) {
+        while self
+            .recent_calls
+            .front()
+            .is_some_and(|t| now.duration_since(*t).as_secs() >= 60)
+        {
             self.recent_calls.pop_front();
         }
         if self.calls_total >= limits.max_calls_per_investigation {
@@ -235,7 +265,8 @@ impl Investigation {
         if self.recent_calls.len() as u64 >= limits.max_calls_per_minute {
             return Err(format!(
                 "rate limit: {} tool calls in the last minute (limit {}); stop and synthesise from the evidence you have",
-                self.recent_calls.len(), limits.max_calls_per_minute
+                self.recent_calls.len(),
+                limits.max_calls_per_minute
             ));
         }
         self.calls_total += 1;
@@ -250,7 +281,11 @@ impl Investigation {
         if let Value::Object(m) = &mut item {
             m.insert("eid".into(), Value::String(eid.clone()));
         }
-        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&self.evidence_path) {
+        if let Ok(mut f) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.evidence_path)
+        {
             let _ = writeln!(f, "{}", item);
         }
         self.evidence.insert(eid.clone(), item);
@@ -261,7 +296,10 @@ impl Investigation {
         entry.n = self.next_n;
         entry.investigation = self.id.clone();
         self.next_n += 1;
-        let mut f = fs::OpenOptions::new().create(true).append(true).open(&self.ledger_path)?;
+        let mut f = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.ledger_path)?;
         writeln!(f, "{}", serde_json::to_string(&entry)?)?;
         Ok(entry)
     }
@@ -309,13 +347,18 @@ impl Engine {
 
     pub fn with_investigation<T>(&self, id: &str, f: impl FnOnce(&mut Investigation) -> T) -> T {
         let mut m = self.investigations.lock().expect("investigations lock");
-        let inv = m.entry(id.to_string()).or_insert_with(|| Investigation::new(&self.cfg.paths.ledger_dir, id));
+        let inv = m
+            .entry(id.to_string())
+            .or_insert_with(|| Investigation::new(&self.cfg.paths.ledger_dir, id));
         f(inv)
     }
 
     pub fn watermarks(&self) -> (BTreeMap<String, DateTime<Utc>>, i64) {
         let s = self.store.read().expect("store lock");
-        let lag = s.newest_log_ts().map(|t| (Utc::now() - t).num_milliseconds()).unwrap_or(-1);
+        let lag = s
+            .newest_log_ts()
+            .map(|t| (Utc::now() - t).num_milliseconds())
+            .unwrap_or(-1);
         (s.watermarks.clone(), lag)
     }
 }

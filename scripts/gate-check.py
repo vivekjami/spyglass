@@ -9,7 +9,10 @@ uses) and its CLI (the operator's path); leaves payments at v1.
   VERIFY        the real fix (propose -> rollback) and then the engine's
                 verdicts: the incident closes only after two consecutive
                 clean checks >= 15 s apart -> a `verified_recovery` ledger
-                entry; a check inside the interval is `too_soon`, not counted
+                entry; a check inside the interval is paced BY THE ENGINE --
+                it waits out the remainder, reports `waited_secs`, and is
+                then counted (Phase 11 F4; before that it was refused as
+                `too_soon`, which the MCP surface can no longer return)
   ESCALATE      the fault comes back right after the fix and stays: once the
                 post window is no better than the incident -> `worsening` ->
                 an `escalation` ledger entry, terminal; nothing else is touched
@@ -43,6 +46,19 @@ from mcp_client import call, session, wait_ready  # noqa: E402
 
 DEPLOYER = "http://localhost:8792/mcp"
 ENGINE = "http://localhost:8791/mcp"
+
+
+def _verify_interval() -> int:
+    """`[verify] interval_secs` from the same config the engine loads."""
+    try:
+        import tomllib
+        with open(Path(__file__).resolve().parent.parent / "spyglass.toml", "rb") as fh:
+            return int(tomllib.load(fh)["verify"]["interval_secs"])
+    except Exception:
+        return 15
+
+
+INTERVAL = _verify_interval()
 CLI = ["./target/release/deployer", "--data-dir", "data/deploy"]
 JOURNAL = Path("data/deploy/journal.jsonl")
 
@@ -124,7 +140,7 @@ def main() -> None:
     time.sleep(1.5)
     checks = [verify(esid, action_id)]          # right after: insufficient data
     time.sleep(5)
-    checks.append(verify(esid, action_id))      # 5 s later: too soon, not counted
+    checks.append(verify(esid, action_id))      # 5 s later: the engine waits out the remainder, then counts it
     for _ in range(4):
         time.sleep(15)
         checks.append(verify(esid, action_id))
@@ -137,8 +153,14 @@ def main() -> None:
     raw["verify_close"] = {"proposal": p, "fix": fix, "checks": checks, "ledger": entries}
     if not (last["closed"] and last["consecutive_clean"] >= 2 and len(closing) == 1):
         fails.append(f"VERIFY: not closed: last status {last['status']}, closing entries {len(closing)}")
-    if checks[1]["result"]["status"] != "too_soon" or checks[1]["result"]["counted"]:
-        fails.append(f"VERIFY: a check 5 s after the last was counted ({checks[1]['result']['status']})")
+    c1 = checks[1]["result"]
+    since1 = c1.get("since_last_check_secs") or 0
+    if not (c1.get("waited_secs", 0) > 0 and c1.get("counted") and since1 >= INTERVAL - 1):
+        fails.append(
+            f"VERIFY: the engine did not pace a check {INTERVAL // 3} s after the last "
+            f"(waited {c1.get('waited_secs')} s, since_last {since1} s, counted {c1.get('counted')}) "
+            f"-- it must hold the call open for the rest of the {INTERVAL} s interval, not refuse it"
+        )
     if last.get("recovery_changepoint"):
         rc = last["recovery_changepoint"]
         print(f"  recovery changepoint: {rc['series']} down at {rc['at'][11:23]}")

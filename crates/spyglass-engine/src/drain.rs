@@ -58,13 +58,22 @@ fn seq_dist(template: &[String], tokens: &[String]) -> f64 {
     if template.is_empty() {
         return 0.0;
     }
-    let same = template.iter().zip(tokens).filter(|(a, b)| a.as_str() != WILDCARD && a == b).count();
+    let same = template
+        .iter()
+        .zip(tokens)
+        .filter(|(a, b)| a.as_str() != WILDCARD && a == b)
+        .count();
     same as f64 / template.len() as f64
 }
 
 impl Drain {
     pub fn new(cfg: DrainCfg) -> Self {
-        Self { cfg, root: Node::default(), clusters: HashMap::new(), next_id: 1 }
+        Self {
+            cfg,
+            root: Node::default(),
+            clusters: HashMap::new(),
+            next_id: 1,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -101,7 +110,11 @@ impl Drain {
         node = node.children.entry(len_key).or_default();
         let lead = self.cfg.depth.saturating_sub(2).min(tokens.len());
         for tok in tokens.iter().take(lead) {
-            let key = if tok == WILDCARD || has_digit(tok) { WILDCARD.to_string() } else { tok.clone() };
+            let key = if tok == WILDCARD || has_digit(tok) {
+                WILDCARD.to_string()
+            } else {
+                tok.clone()
+            };
             if !node.children.contains_key(&key) && node.children.len() >= self.cfg.max_children {
                 node = node.children.entry(WILDCARD.to_string()).or_default();
             } else {
@@ -122,7 +135,12 @@ impl Drain {
             // "request captured") hit 0.5 exactly; a merge on one matching
             // token is a coincidence, not a template. Require at least two
             // agreeing positions unless the message is a single token.
-            let agreeing = self.clusters[&cid].tokens.iter().zip(&tokens).filter(|(a, b)| a.as_str() != WILDCARD && a == b).count();
+            let agreeing = self.clusters[&cid]
+                .tokens
+                .iter()
+                .zip(&tokens)
+                .filter(|(a, b)| a.as_str() != WILDCARD && a == b)
+                .count();
             if sim >= self.cfg.similarity_threshold && (agreeing >= 2 || tokens.len() == 1) {
                 let c = self.clusters.get_mut(&cid).expect("cluster exists");
                 for (t, tok) in c.tokens.iter_mut().zip(&tokens) {
@@ -137,7 +155,14 @@ impl Drain {
         let id = self.next_id;
         self.next_id += 1;
         node.clusters.push(id);
-        self.clusters.insert(id, Cluster { id, tokens, size: 1 });
+        self.clusters.insert(
+            id,
+            Cluster {
+                id,
+                tokens,
+                size: 1,
+            },
+        );
         (id, true)
     }
 }
@@ -147,7 +172,11 @@ mod tests {
     use super::*;
 
     fn cfg() -> DrainCfg {
-        DrainCfg { depth: 3, similarity_threshold: 0.5, max_children: 100 }
+        DrainCfg {
+            depth: 3,
+            similarity_threshold: 0.5,
+            max_children: 100,
+        }
     }
     fn toks(s: &str) -> Vec<String> {
         s.split_whitespace().map(str::to_string).collect()
@@ -177,7 +206,10 @@ mod tests {
         let mut d = Drain::new(cfg());
         let (a, _) = d.insert(toks("payments charge failed with HTTP <*>"));
         let (b, _) = d.insert(toks("payments charge cached for request <*>"));
-        assert_ne!(a, b, "2 of 6 positions match (0.33) -- must not merge at 0.5");
+        assert_ne!(
+            a, b,
+            "2 of 6 positions match (0.33) -- must not merge at 0.5"
+        );
         assert_eq!(d.len(), 2);
     }
 
@@ -215,10 +247,19 @@ mod tests {
 
     #[test]
     fn ids_are_stable_across_merges_and_order_is_deterministic() {
-        let lines = ["user alice logged in", "user bob logged in", "job <*> finished", "job <*> failed", "user carol logged in"];
+        let lines = [
+            "user alice logged in",
+            "user bob logged in",
+            "job <*> finished",
+            "job <*> failed",
+            "user carol logged in",
+        ];
         let run = || {
             let mut d = Drain::new(cfg());
-            lines.iter().map(|l| d.insert(toks(l)).0).collect::<Vec<_>>()
+            lines
+                .iter()
+                .map(|l| d.insert(toks(l)).0)
+                .collect::<Vec<_>>()
         };
         assert_eq!(run(), run());
         let mut d = Drain::new(cfg());

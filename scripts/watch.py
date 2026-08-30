@@ -54,7 +54,8 @@ LINE = re.compile(r'^requests_total\{([^}]*)\}\s+([0-9.e+]+)$', re.M)
 
 
 def scrape():
-    txt = urllib.request.urlopen(METRICS, timeout=3).read().decode()
+    with urllib.request.urlopen(METRICS, timeout=3) as r:
+        txt = r.read().decode()
     tot = err = 0.0
     for labels, val in LINE.findall(txt):
         if 'route="/checkout"' not in labels:

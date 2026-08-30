@@ -178,7 +178,7 @@ the bill.
 %), same answer, every claim cited. On S1 Spyglass costs 9 % more input
 tokens (uncached −3 %) and 15 s more wall time; on S2, 5 % more (uncached
 −17 %) and 7 s. Both are the action path, not the investigation: the
-causal check (2 calls) and the engine-judged verification — 15 of the 54
+causal check (2 calls) and the engine-judged verification — 15 of the 55
 S1 Spyglass calls and 25 of 89 on S2 are `verify_recovery`, most of them
 `too_soon` polls (F6a). One S2 run that did not poll finished in 15 calls
 and 329k tokens; the two that did took 36–38 calls and 1.2–1.3 M. The
@@ -194,8 +194,8 @@ and replay ids and the verification checks as *other* (the ground truth
 has no matcher for them; they are the action's evidence, not the
 cause's). Over root-cause citations alone — relevant ÷ (relevant +
 decoy), computed post hoc from the same per-eid classification, not a
-change to the scorer — Spyglass is at 91–100 % on S1–S3 and cited a decoy
-in four runs out of nine; on S6, 70–100 %, three decoy citations in the
+change to the scorer — Spyglass is at 86–100 % on S1–S3 and cited a decoy
+in five runs out of nine; on S6, 70–100 %, three decoy citations in the
 run that blamed the postgres chatter. The baseline's claims have no ids
 and are not re-checkable — a property, not a score.
 
@@ -260,7 +260,7 @@ one is `too_soon` and not counted — held in every run. What it did not do
 is stop the agent from *asking*: instead of the SOP's `sleep 15`, the
 model filled the interval with `freshness_watermark`, `current_versions`
 and the harness's `get_current_datetime`, then asked again. On S1 that is
-4–5 `verify_recovery` calls (two or three of them `too_soon`) and 18–19
+4–6 `verify_recovery` calls (one to three of them `too_soon`) and 18–19
 tool calls per run against 12–14 in Phase 9; on one S2 run, 12
 verification calls and 14 watermarks in a 38-call, 1.28 M-token
 investigation whose engine-side work was five counted checks. Each
@@ -328,7 +328,7 @@ as a property of this model's tool-calling style rather than a result.
 
 ### F6e. The ablation ledgers re-checked against the wrong engine
 
-Every A1 run file records `ledger re-check … FAIL` (3–6 mismatches). The
+Every A1 run file records `ledger re-check … FAIL` (1–6 mismatches). The
 runner re-executes the ledger against `scripts/ledger-check.py`'s default
 engine, `:8791` — the main engine — while A1's entries were issued by the
 ablation engine on `:8794`, whose bundles and watermarks digest differently
@@ -338,7 +338,7 @@ last A1 ledger re-checked against `:8794` the moment the matrix ended:
 exactly as recorded. The verdicts in the run files are kept as they were
 written; the checker now takes `--engine` and the runner passes the
 issuing engine's URL. The Spyglass rows (main engine) were unaffected:
-9/9 PASS.
+12/12 PASS.
 
 ### F7. Loose ends, stated
 

@@ -83,7 +83,9 @@ fn sigma_floor(kind: Kind, mean: f64, cfg: &ChangepointCfg) -> f64 {
     match kind {
         Kind::Count => cfg.sigma_floor_count.max(mean.max(0.0).sqrt()),
         Kind::Rate => cfg.sigma_floor_rate,
-        Kind::Latency => cfg.sigma_floor_latency_ms.max(cfg.sigma_floor_latency_frac * mean),
+        Kind::Latency => cfg
+            .sigma_floor_latency_ms
+            .max(cfg.sigma_floor_latency_frac * mean),
     }
 }
 
@@ -95,7 +97,12 @@ struct Stats {
     range: (usize, usize),
 }
 
-fn stats(values: &[Option<f64>], range: (usize, usize), kind: Kind, cfg: &ChangepointCfg) -> Option<Stats> {
+fn stats(
+    values: &[Option<f64>],
+    range: (usize, usize),
+    kind: Kind,
+    cfg: &ChangepointCfg,
+) -> Option<Stats> {
     let (from, to) = range;
     if to <= from {
         return None;
@@ -108,11 +115,22 @@ fn stats(values: &[Option<f64>], range: (usize, usize), kind: Kind, cfg: &Change
     let mean = xs.iter().sum::<f64>() / n;
     let var = xs.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / n;
     let sigma = var.sqrt();
-    Some(Stats { mean, sigma, sigma_used: sigma.max(sigma_floor(kind, mean, cfg)), n: xs.len(), range })
+    Some(Stats {
+        mean,
+        sigma,
+        sigma_used: sigma.max(sigma_floor(kind, mean, cfg)),
+        n: xs.len(),
+        range,
+    })
 }
 
 /// z per bucket (None where the value or its baseline is undefined).
-fn zscores(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &ChangepointCfg) -> Vec<Option<(f64, Stats)>> {
+fn zscores(
+    values: &[Option<f64>],
+    kind: Kind,
+    baseline: Baseline,
+    cfg: &ChangepointCfg,
+) -> Vec<Option<(f64, Stats)>> {
     let b = (cfg.baseline_secs / cfg.bucket_secs).max(1) as usize;
     let g = (cfg.guard_secs / cfg.bucket_secs).max(1) as usize;
     values
@@ -131,7 +149,12 @@ fn zscores(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &Changep
 }
 
 /// The detector: confirmed runs of flagged buckets, one `Run` per changepoint.
-pub fn detect(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &ChangepointCfg) -> Vec<Run> {
+pub fn detect(
+    values: &[Option<f64>],
+    kind: Kind,
+    baseline: Baseline,
+    cfg: &ChangepointCfg,
+) -> Vec<Run> {
     let zs = zscores(values, kind, baseline, cfg);
     let mut runs = Vec::new();
     let mut i = 0;
@@ -144,13 +167,19 @@ pub fn detect(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &Chan
             i += 1;
             continue;
         }
-        let dir = if *z > 0.0 { Direction::Up } else { Direction::Down };
+        let dir = if *z > 0.0 {
+            Direction::Up
+        } else {
+            Direction::Down
+        };
         let mut j = i;
         let mut z_peak = *z;
         let mut sum = 0.0;
         while j < zs.len() {
             match zs[j].as_ref() {
-                Some((zj, _)) if zj.abs() >= cfg.z_threshold && (*zj > 0.0) == (dir == Direction::Up) => {
+                Some((zj, _))
+                    if zj.abs() >= cfg.z_threshold && (*zj > 0.0) == (dir == Direction::Up) =>
+                {
                     if zj.abs() > z_peak.abs() {
                         z_peak = *zj;
                     }
@@ -185,13 +214,22 @@ pub fn detect(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &Chan
 
 /// True when the newest bucket is flagged but not yet confirmed by a
 /// second one -- "something may be starting", reported as such.
-pub fn tail_unconfirmed(values: &[Option<f64>], kind: Kind, baseline: Baseline, cfg: &ChangepointCfg) -> bool {
+pub fn tail_unconfirmed(
+    values: &[Option<f64>],
+    kind: Kind,
+    baseline: Baseline,
+    cfg: &ChangepointCfg,
+) -> bool {
     let zs = zscores(values, kind, baseline, cfg);
     let n = zs.len();
     if n == 0 {
         return false;
     }
-    let flagged = |i: usize| zs.get(i).and_then(|z| z.as_ref()).is_some_and(|(z, _)| z.abs() >= cfg.z_threshold);
+    let flagged = |i: usize| {
+        zs.get(i)
+            .and_then(|z| z.as_ref())
+            .is_some_and(|(z, _)| z.abs() >= cfg.z_threshold)
+    };
     if !flagged(n - 1) {
         return false;
     }
@@ -214,7 +252,11 @@ pub struct Series {
 
 impl Series {
     pub fn key(&self) -> String {
-        let l: Vec<String> = self.labels.iter().map(|(k, v)| format!("{k}=\"{v}\"")).collect();
+        let l: Vec<String> = self
+            .labels
+            .iter()
+            .map(|(k, v)| format!("{k}=\"{v}\""))
+            .collect();
         format!("{}{{{}}}", self.metric, l.join(","))
     }
 }
@@ -228,7 +270,12 @@ pub struct Acc {
     pub lat_n: u64,
 }
 
-pub const METRICS: [&str; 4] = ["error_rate", "errors_total", "requests_total", "latency_ms_mean"];
+pub const METRICS: [&str; 4] = [
+    "error_rate",
+    "errors_total",
+    "requests_total",
+    "latency_ms_mean",
+];
 
 /// Turn per-bucket accumulators (index -> Acc, `n` buckets, buckets before
 /// `history_from` undefined) into the four series for one label set.
@@ -240,10 +287,22 @@ pub fn series_from(labels: BTreeMap<String, String>, accs: &[Option<Acc>]) -> Ve
         values: accs.iter().map(|a| a.as_ref().and_then(f)).collect(),
     };
     vec![
-        mk("error_rate", Kind::Rate, &|a| if a.requests > 0 { Some(a.errors as f64 / a.requests as f64) } else { None }),
+        mk("error_rate", Kind::Rate, &|a| {
+            if a.requests > 0 {
+                Some(a.errors as f64 / a.requests as f64)
+            } else {
+                None
+            }
+        }),
         mk("errors_total", Kind::Count, &|a| Some(a.errors as f64)),
         mk("requests_total", Kind::Count, &|a| Some(a.requests as f64)),
-        mk("latency_ms_mean", Kind::Latency, &|a| if a.lat_n > 0 { Some(a.lat_sum / a.lat_n as f64) } else { None }),
+        mk("latency_ms_mean", Kind::Latency, &|a| {
+            if a.lat_n > 0 {
+                Some(a.lat_sum / a.lat_n as f64)
+            } else {
+                None
+            }
+        }),
     ]
 }
 
@@ -253,14 +312,23 @@ mod tests {
 
     fn cfg() -> ChangepointCfg {
         ChangepointCfg {
-            bucket_secs: 10, z_threshold: 4.0, consecutive_buckets: 2, baseline_secs: 900, guard_secs: 30,
-            min_baseline_buckets: 6, sigma_floor_count: 1.0, sigma_floor_rate: 0.01,
-            sigma_floor_latency_frac: 0.05, sigma_floor_latency_ms: 2.0,
+            bucket_secs: 10,
+            z_threshold: 4.0,
+            consecutive_buckets: 2,
+            baseline_secs: 900,
+            guard_secs: 30,
+            min_baseline_buckets: 6,
+            sigma_floor_count: 1.0,
+            sigma_floor_rate: 0.01,
+            sigma_floor_latency_frac: 0.05,
+            sigma_floor_latency_ms: 2.0,
         }
     }
 
     fn step(pre: usize, pre_val: f64, post: usize, post_val: f64) -> Vec<Option<f64>> {
-        let mut v: Vec<Option<f64>> = (0..pre).map(|i| Some(pre_val + 0.002 * ((i % 3) as f64 - 1.0))).collect();
+        let mut v: Vec<Option<f64>> = (0..pre)
+            .map(|i| Some(pre_val + 0.002 * ((i % 3) as f64 - 1.0)))
+            .collect();
         v.extend((0..post).map(|i| Some(post_val + 0.01 * ((i % 2) as f64))));
         v
     }
@@ -330,7 +398,10 @@ mod tests {
         let rec: Vec<_> = runs.iter().filter(|r| r.start == 72).collect();
         assert_eq!(rec.len(), 1, "{runs:?}");
         assert_eq!(rec[0].direction, Direction::Down);
-        assert!(runs.iter().all(|r| r.start < 60 || r.start == 72), "{runs:?}");
+        assert!(
+            runs.iter().all(|r| r.start < 60 || r.start == 72),
+            "{runs:?}"
+        );
     }
 
     #[test]
@@ -359,8 +430,22 @@ mod tests {
         let mut l = BTreeMap::new();
         l.insert("service".to_string(), "orders".to_string());
         l.insert("route".to_string(), "/orders".to_string());
-        let s = series_from(l, &[Some(Acc { requests: 10, errors: 2, lat_sum: 100.0, lat_n: 10 }), None]);
-        assert_eq!(s[0].key(), "error_rate{route=\"/orders\",service=\"orders\"}");
+        let s = series_from(
+            l,
+            &[
+                Some(Acc {
+                    requests: 10,
+                    errors: 2,
+                    lat_sum: 100.0,
+                    lat_n: 10,
+                }),
+                None,
+            ],
+        );
+        assert_eq!(
+            s[0].key(),
+            "error_rate{route=\"/orders\",service=\"orders\"}"
+        );
         assert_eq!(s[0].values, vec![Some(0.2), None]);
         assert_eq!(s[1].values, vec![Some(2.0), None]);
         assert_eq!(s[3].values, vec![Some(10.0), None]);

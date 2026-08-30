@@ -174,3 +174,126 @@ listing — the honesty is visible as a directory.
 - Voiceover recorded separately from screen capture, two takes.
 - Every clip kept.
 - **If a segment's feature was dropped, the segment is cut — never faked.**
+
+## Filming-day runbook (Phase 11)
+
+Everything below was exercised in Phase 11 (`docs/phase11-findings.md`).
+Total screen time ≤ 3:00; the cut is assembled from **four captures**, each
+of which can be retaken independently. Voiceover is recorded separately
+against the assembled cut, two takes.
+
+### Preflight (once, ~5 min; repeat after any reboot)
+
+```bash
+source scripts/env.sh                       # node 22 on PATH, harness URL
+scripts/trueforge.sh start                  # harness on :8790 — "healthy"
+scripts/trueforge.sh status | grep -A1 sandbox   # "enabled": true — else scripts/install-sandbox-deps.sh
+just build                                  # engine + deployer + rawtools + target image
+just mcp-up && just tf-setup                # 4 MCP servers, 3 named agents (idempotent)
+just up                                     # stack green: all v1
+```
+
+Three terminals, one browser tab: **A** the TrueForge session page
+(`http://localhost:8790/sessions/<id>` — `just investigate` prints the URL),
+**B** the runner (`just demo` / `just investigate …`), **C** `just watch`.
+Font ≥ 16 pt; the session page is the star, keep it at ≥ 60 % of the frame.
+
+### Capture 1 — the incident begins (segment 0:00–0:10)
+
+```bash
+just up && just watch                                       # C: 0.0 % 5xx, payments=v1
+./target/release/deployer --data-dir data/deploy deploy payments v2 --actor deploy-bot   # B
+# C climbs within one 5 s window; the alert line fires two windows later
+./target/release/deployer --data-dir data/deploy rollback payments v1 --request-id $(uuidgen)   # reset
+```
+
+### Capture 2 — the naive agent (segment 0:10–0:30; played at 8×)
+
+Already filmed in Phase 2? Use that footage. Otherwise:
+
+```bash
+S1_FAST=1 just scenario s1                  # fresh incident (~4 min incl. steady state)
+just investigate baseline --approval ask    # B prints the session URL → open in A
+# A: raw log walls; B: per-turn tool calls and token totals; freeze on the last totals line
+```
+
+Say what the run shows: the baseline *finds* S1 — the cost is the story
+(tool calls, tokens, bytes paged into context), not failure.
+
+### Capture 3 — THE loop (segments 0:45–2:45, one continuous take)
+
+```bash
+just demo                                   # fresh S1 → Spyglass agent → gate → verify → ledger re-check
+```
+
+What to hold on, in order, all in **A** unless noted:
+
+1. `freshness_watermark` → `build_evidence_bundle`: *events_scanned → items_returned*, the head (template / changepoint / `D-2`), `relationships`.
+2. `get_evidence` on the ERROR template: the stack, `first_seen`, `instances: ["payments-v2"]`.
+3. `get_exemplar_request`: the sanitized request, its `chain`, `outcome.origin_5xx`.
+4. `replay_exemplar`: `comparison {"v1": "0/20", "v2": "20/20"}`, `verdict: separated`, the `reading`.
+5. `propose_rollback` → the gate in **B**: proposal id, service, versions, each eid resolved to its ledger line. Type `y`. (Second take, optional: `n` — the run ends report-only.)
+6. `verify_recovery` × 2–3 in **A**: `insufficient_data`/`clean (1/2)` → `recovered … CLOSED`; **C** falls to 0 %.
+7. The postmortem's *Evidence* list, then **B**'s closing lines: `ledger re-check: N match, 0 mismatch → PASS`.
+
+Reset between takes: `S1_FAST=1 just scenario s1` (clean state, new run id).
+Read every number off the screen; a second run may say 19/20 — say that.
+
+### Capture 4 — the numbers (segment 2:45–3:00)
+
+Open `README.md` → *Results* (the generated table between the
+`bench-results` markers) at a zoom where the **Success**, **No wrong
+action**, **RCA** and **Tokens** columns of the S1–S3 and S6 rows are legible;
+optionally `ls bench/results | wc -l` in **B** and `just bench --dry-run`.
+End card: repo URL · `just demo` · the one-line thesis.
+
+### Narration (≈ 420 words at a normal pace = 2:50)
+
+<!-- narration:begin -->
+**0:00 — Incident.** *Friday, 4 p.m. A payments deploy goes out. Within ten
+seconds one checkout in five is failing. Someone gets paged.*
+
+**0:10 — The naive agent.** *Give the same model raw tools — tail, grep,
+metrics — and it does find it. Watch the cost: nineteen calls, four
+hundred thousand tokens, a minute of wall time, and a report you cannot
+check. Published evals say this is the ceiling: frontier models under
+fifty percent on real incidents, and longer trajectories don't help.*
+
+**0:30 — The turn.** *So don't make the agent smarter. Make the evidence
+better. Spyglass is a Rust evidence plane between the telemetry and the
+model: it mines templates, scores novelty, finds changepoints, ranks, and
+hands the agent a bounded bundle — every item with an evidence id, a
+digest, and the engine's latency.*
+
+**0:45 — Spyglass investigates.** *One call: eight thousand events become
+six items. The new error template, first seen on payments-v2 a tenth of a
+second after the deploy. The error-rate changepoint, plus zero-point-six
+seconds after D-2. The deploy itself. The engine says which precedes
+which. Single-digit milliseconds — that's the Rust argument, on screen.*
+
+**1:30 — The experiment.** *Correlation is not cause. The agent takes the
+request a real client sent, sanitized, and replays it twenty times against
+each version. v1: zero of twenty. v2: twenty of twenty. Separated. Now the
+word is "caused" — for this failure mode, and the tool says only that.*
+
+**2:00 — The gate.** *The agent cannot act. It proposes; the system mints
+the key, snapshots the live version, stamps an expiry. The human reads the
+evidence behind each id — E8: replay, v2 twenty of twenty failed — and
+says yes, once. Rollback. Then the engine, not the model, verifies: two
+clean checks, incident closed.*
+
+**2:25 — The ledger.** *Every claim in the postmortem cites an id; every id
+is a ledger line with a digest; re-run the query and the digest matches.
+An investigation you can audit next week.*
+
+**2:45 — The numbers.** *Same model, same harness, same information, same
+gate; only the evidence changed. Thirty-six runs, every one committed.
+Where the cause is in the telemetry, raw tools find it too — a tie on
+accuracy; Spyglass cheaper on one scenario, dearer on two. Where there is
+no cause to find, the honest result: the no-novelty ablation refused three
+of three; Spyglass once; raw tools never. More evidence made the agent
+act. That's the finding, and the benchmark is why we know it.*
+
+**End card.** *github.com/vivekjami/spyglass — `just demo`. Evidence
+engineering: make the evidence better instead of the model smarter.*
+<!-- narration:end -->

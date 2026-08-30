@@ -59,7 +59,15 @@ pub fn score(f: &Factors, w: &RankingCfg) -> Score {
         w.w_r * c(f.relevance),
     );
     let r3 = |x: f64| (x * 1000.0).round() / 1000.0;
-    Score { total: r3(n + t + s + d + fr + r), n: r3(n), t: r3(t), s: r3(s), d: r3(d), f: r3(fr), r: r3(r) }
+    Score {
+        total: r3(n + t + s + d + fr + r),
+        n: r3(n),
+        t: r3(t),
+        s: r3(s),
+        d: r3(d),
+        f: r3(fr),
+        r: r3(r),
+    }
 }
 
 pub fn proximity(delta_secs: f64, tau: f64) -> f64 {
@@ -119,18 +127,81 @@ mod tests {
     use super::*;
 
     fn w() -> RankingCfg {
-        RankingCfg { w_n: 0.30, w_t: 0.15, w_s: 0.10, w_d: 0.25, w_f: 0.10, w_r: 0.10, proximity_tau_secs: 120.0, relevance_hop_decay: 0.75, cascade_secs: 2.0 }
+        RankingCfg {
+            w_n: 0.30,
+            w_t: 0.15,
+            w_s: 0.10,
+            w_d: 0.25,
+            w_f: 0.10,
+            w_r: 0.10,
+            proximity_tau_secs: 120.0,
+            relevance_hop_decay: 0.75,
+            cascade_secs: 2.0,
+        }
     }
     fn edges() -> Vec<(String, String)> {
-        [("gateway", "orders"), ("orders", "payments"), ("orders", "postgres"), ("payments", "redis"), ("loadgen", "gateway")]
-            .iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+        [
+            ("gateway", "orders"),
+            ("orders", "payments"),
+            ("orders", "postgres"),
+            ("payments", "redis"),
+            ("loadgen", "gateway"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect()
     }
     // S1's three key facts and its decoy, focus = gateway (the alerting service).
-    fn root_template() -> Factors { Factors { novelty: 1.0, proximity: 1.0, severity: 1.0, deploy_correlation: 1.0, freq_shift: 1.0, relevance: 1.0 } }
-    fn error_changepoint() -> Factors { Factors { novelty: 1.0, proximity: 1.0, severity: 1.0, deploy_correlation: 1.0, freq_shift: 1.0, relevance: 1.0 } }
-    fn fault_deploy() -> Factors { Factors { novelty: 1.0, proximity: 0.996, severity: 0.5, deploy_correlation: 1.0, freq_shift: 0.0, relevance: 0.5625 } }
-    fn info_decoy() -> Factors { Factors { novelty: 1.0, proximity: 1.0, severity: 0.0, deploy_correlation: 1.0, freq_shift: 1.0, relevance: 0.5625 } }
-    fn benign_deploy() -> Factors { Factors { novelty: 1.0, proximity: proximity(360.0, 120.0), severity: 0.5, deploy_correlation: 0.0, freq_shift: 0.0, relevance: 0.75 } }
+    fn root_template() -> Factors {
+        Factors {
+            novelty: 1.0,
+            proximity: 1.0,
+            severity: 1.0,
+            deploy_correlation: 1.0,
+            freq_shift: 1.0,
+            relevance: 1.0,
+        }
+    }
+    fn error_changepoint() -> Factors {
+        Factors {
+            novelty: 1.0,
+            proximity: 1.0,
+            severity: 1.0,
+            deploy_correlation: 1.0,
+            freq_shift: 1.0,
+            relevance: 1.0,
+        }
+    }
+    fn fault_deploy() -> Factors {
+        Factors {
+            novelty: 1.0,
+            proximity: 0.996,
+            severity: 0.5,
+            deploy_correlation: 1.0,
+            freq_shift: 0.0,
+            relevance: 0.5625,
+        }
+    }
+    fn info_decoy() -> Factors {
+        Factors {
+            novelty: 1.0,
+            proximity: 1.0,
+            severity: 0.0,
+            deploy_correlation: 1.0,
+            freq_shift: 1.0,
+            relevance: 0.5625,
+        }
+    }
+    fn benign_deploy() -> Factors {
+        Factors {
+            novelty: 1.0,
+            proximity: proximity(360.0, 120.0),
+            severity: 0.5,
+            deploy_correlation: 0.0,
+            freq_shift: 0.0,
+            relevance: 0.75,
+        }
+    }
 
     #[test]
     fn the_root_template_outranks_everything_and_contributions_sum_to_the_total() {
@@ -163,21 +234,30 @@ mod tests {
     fn zeroing_the_novelty_weight_removes_exactly_w_n_from_every_novel_item() {
         let mut w0 = w();
         w0.w_n = 0.0;
-        for f in [root_template(), error_changepoint(), fault_deploy(), info_decoy()] {
+        for f in [
+            root_template(),
+            error_changepoint(),
+            fault_deploy(),
+            info_decoy(),
+        ] {
             assert!((score(&f, &w()).total - score(&f, &w0).total - 0.30).abs() < 1e-9);
         }
         // novelty is a constant across first-seen items, so it separates none
         // of them from each other -- what separates the decoy from the deploy is
         // severity and freq_shift; what puts the deploy in the bundle's top
         // three is the kind-diverse head, not the weights (docs/phase6-findings F2)
-        let gap = |wx: &RankingCfg| score(&info_decoy(), wx).total - score(&fault_deploy(), wx).total;
+        let gap =
+            |wx: &RankingCfg| score(&info_decoy(), wx).total - score(&fault_deploy(), wx).total;
         assert!((gap(&w()) - gap(&w0)).abs() < 1e-9);
     }
 
     #[test]
     fn relevance_decays_per_hop_and_is_zero_off_graph() {
         let d = hop_distances("gateway", &edges());
-        assert_eq!((d["gateway"], d["orders"], d["payments"], d["redis"]), (0, 1, 2, 3));
+        assert_eq!(
+            (d["gateway"], d["orders"], d["payments"], d["redis"]),
+            (0, 1, 2, 3)
+        );
         assert_eq!(relevance(d.get("payments").copied(), 0.75), 0.5625);
         assert_eq!(relevance(None, 0.75), 0.0);
     }

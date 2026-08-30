@@ -27,10 +27,7 @@
 //!   * no p-values at this N: raw proportions, a stated threshold, and a
 //!     reading that says what the numbers do and do not show
 
-use std::{
-    collections::BTreeMap,
-    time::Instant,
-};
+use std::{collections::BTreeMap, time::Instant};
 
 use anyhow::{Result, anyhow, bail};
 use chrono::{DateTime, Utc};
@@ -111,13 +108,16 @@ pub struct Exemplar {
 }
 
 pub fn select(store: &Store, sel: &Selector, w: &Window) -> Result<Exemplar> {
-    if let Selector::Template(t) = sel {
-        if !store.templates.contains_key(t) {
-            bail!("unknown template_id '{t}'");
-        }
+    if let Selector::Template(t) = sel
+        && !store.templates.contains_key(t)
+    {
+        bail!("unknown template_id '{t}'");
     }
     if let Selector::Event(id) = sel {
-        let &i = store.by_event_id.get(id).ok_or_else(|| anyhow!("unknown event_id '{id}'"))?;
+        let &i = store
+            .by_event_id
+            .get(id)
+            .ok_or_else(|| anyhow!("unknown event_id '{id}'"))?;
         let e = &store.events[i];
         let capture_idx = e
             .req_id
@@ -125,7 +125,13 @@ pub fn select(store: &Store, sel: &Selector, w: &Window) -> Result<Exemplar> {
             .and_then(|r| store.captures.get(r))
             .copied()
             .ok_or_else(|| anyhow!("event {id} (req_id {:?}) has no captured request", e.req_id))?;
-        return Ok(Exemplar { req_id: e.req_id.clone().unwrap_or_default(), capture_idx, matched_idx: i, matching: 1, with_capture: 1 });
+        return Ok(Exemplar {
+            req_id: e.req_id.clone().unwrap_or_default(),
+            capture_idx,
+            matched_idx: i,
+            matching: 1,
+            with_capture: 1,
+        });
     }
     let mut matching = 0usize;
     let mut cands: Vec<(DateTime<Utc>, &str, usize, usize)> = Vec::new();
@@ -135,7 +141,9 @@ pub fn select(store: &Store, sel: &Selector, w: &Window) -> Result<Exemplar> {
         }
         let hit = match sel {
             Selector::Template(t) => e.template_id == *t,
-            Selector::RouteStatus(r, s) => e.route.as_deref() == Some(r.as_str()) && e.status == Some(*s),
+            Selector::RouteStatus(r, s) => {
+                e.route.as_deref() == Some(r.as_str()) && e.status == Some(*s)
+            }
             Selector::Event(_) => unreachable!("handled above"),
         };
         if !hit {
@@ -155,11 +163,21 @@ pub fn select(store: &Store, sel: &Selector, w: &Window) -> Result<Exemplar> {
             fmt_ts(w.from),
             fmt_ts(w.to),
             matching,
-            if matching == 0 { "; check the template_id, or pass the eid of the template item" } else { "" }
+            if matching == 0 {
+                "; check the template_id, or pass the eid of the template item"
+            } else {
+                ""
+            }
         );
     };
     let req_id = store.events[matched_idx].req_id.clone().unwrap_or_default();
-    Ok(Exemplar { req_id, capture_idx, matched_idx, matching, with_capture })
+    Ok(Exemplar {
+        req_id,
+        capture_idx,
+        matched_idx,
+        matching,
+        with_capture,
+    })
 }
 
 /// The captured request, sanitized: method, path, kept headers, body.
@@ -173,12 +191,24 @@ pub struct CapturedRequest {
 
 pub fn captured(store: &Store, capture_idx: usize, body_cap: usize) -> Result<CapturedRequest> {
     let e = &store.events[capture_idx];
-    let raw: Value = serde_json::from_str(&e.raw).map_err(|x| anyhow!("capture {} is not parseable: {x}", e.event_id))?;
+    let raw: Value = serde_json::from_str(&e.raw)
+        .map_err(|x| anyhow!("capture {} is not parseable: {x}", e.event_id))?;
     let (headers, headers_dropped) = sanitize_headers(raw.get("headers").unwrap_or(&Value::Null));
-    let body = sanitize_body(raw.get("body").and_then(|b| b.as_str()).unwrap_or(""), body_cap);
+    let body = sanitize_body(
+        raw.get("body").and_then(|b| b.as_str()).unwrap_or(""),
+        body_cap,
+    );
     Ok(CapturedRequest {
-        method: raw.get("method").and_then(|m| m.as_str()).unwrap_or("POST").to_string(),
-        path: raw.get("path").and_then(|p| p.as_str()).unwrap_or("/").to_string(),
+        method: raw
+            .get("method")
+            .and_then(|m| m.as_str())
+            .unwrap_or("POST")
+            .to_string(),
+        path: raw
+            .get("path")
+            .and_then(|p| p.as_str())
+            .unwrap_or("/")
+            .to_string(),
         headers,
         headers_dropped,
         body,
@@ -202,7 +232,9 @@ fn chain(store: &Store, req_id: &str) -> Vec<Value> {
     let mut evs: Vec<&spyglass_core::Event> = store
         .events
         .iter()
-        .filter(|e| e.req_id.as_deref() == Some(req_id) && e.kind.as_deref() != Some("request_capture"))
+        .filter(|e| {
+            e.req_id.as_deref() == Some(req_id) && e.kind.as_deref() != Some("request_capture")
+        })
         .collect();
     evs.sort_by(|x, y| x.ts.cmp(&y.ts).then(x.event_id.cmp(&y.event_id)));
     evs.into_iter()
@@ -223,7 +255,12 @@ fn replay_hint(cfg: &spyglass_core::Config, path: &str) -> Value {
         .iter()
         .filter(|r| r.captured_path == path)
         .map(|r| {
-            let versions: Vec<String> = cfg.services.iter().filter(|s| s.service == r.service).filter_map(|s| s.version.clone()).collect();
+            let versions: Vec<String> = cfg
+                .services
+                .iter()
+                .filter(|s| s.service == r.service)
+                .filter_map(|s| s.version.clone())
+                .collect();
             json!({"service": r.service, "path": r.path, "versions_always_on": versions})
         })
         .collect();
@@ -236,12 +273,23 @@ fn replay_hint(cfg: &spyglass_core::Config, path: &str) -> Value {
 
 /// The full exemplar record: the sanitized request, how it was matched, its
 /// path through the system, and how it can be replayed.
-pub fn exemplar_record(store: &Store, cfg: &spyglass_core::Config, ex: &Exemplar, sel: &Selector, w: &Window) -> Result<Value> {
+pub fn exemplar_record(
+    store: &Store,
+    cfg: &spyglass_core::Config,
+    ex: &Exemplar,
+    sel: &Selector,
+    w: &Window,
+) -> Result<Value> {
     let cap_ev = &store.events[ex.capture_idx];
     let req = captured(store, ex.capture_idx, cfg.replay.body_cap)?;
     let m = &store.events[ex.matched_idx];
     let chain = chain(store, &ex.req_id);
-    let edge = chain.iter().find(|c| c["instance"] == cap_ev.instance && c["route"].as_str() == Some(req.path.as_str())).cloned();
+    let edge = chain
+        .iter()
+        .find(|c| {
+            c["instance"] == cap_ev.instance && c["route"].as_str() == Some(req.path.as_str())
+        })
+        .cloned();
     let origin = chain
         .iter()
         .filter(|c| c["status"].as_u64().is_some_and(|s| s >= 500))
@@ -297,17 +345,30 @@ fn cited_exemplar(store: &Store, rec: &Value) -> Option<String> {
         .into_iter()
         .flatten()
         .filter_map(|x| x.as_str())
-        .find(|id| store.by_event_id.get(*id).and_then(|&i| store.events[i].req_id.as_ref()).is_some_and(|r| store.captures.contains_key(r)))
+        .find(|id| {
+            store
+                .by_event_id
+                .get(*id)
+                .and_then(|&i| store.events[i].req_id.as_ref())
+                .is_some_and(|r| store.captures.contains_key(r))
+        })
         .map(str::to_string)
 }
 
 fn template_of_record(rec: &Value) -> Option<&str> {
-    rec.get("template_id")
-        .and_then(|x| x.as_str())
-        .or_else(|| rec.get("bundle_ref").and_then(|x| x.as_str()).filter(|r| r.starts_with('T')))
+    rec.get("template_id").and_then(|x| x.as_str()).or_else(|| {
+        rec.get("bundle_ref")
+            .and_then(|x| x.as_str())
+            .filter(|r| r.starts_with('T'))
+    })
 }
 
-fn resolve_selector(engine: &Engine, investigation: &str, store: &Store, a: &ExemplarArgs) -> Result<Selector> {
+fn resolve_selector(
+    engine: &Engine,
+    investigation: &str,
+    store: &Store,
+    a: &ExemplarArgs,
+) -> Result<Selector> {
     if let Some(id) = &a.event_id {
         return Ok(Selector::Event(id.clone()));
     }
@@ -318,20 +379,30 @@ fn resolve_selector(engine: &Engine, investigation: &str, store: &Store, a: &Exe
         let rec = engine
             .with_investigation(investigation, |inv| inv.evidence.get(eid).cloned())
             .ok_or_else(|| anyhow!("unknown evidence id '{eid}' in this investigation"))?;
-        if rec.get("kind").and_then(|k| k.as_str()) == Some("exemplar_request") {
-            if let Some(id) = rec.get("matched").and_then(|m| m.get("event_id")).and_then(|x| x.as_str()) {
-                return Ok(Selector::Event(id.to_string()));
-            }
+        if rec.get("kind").and_then(|k| k.as_str()) == Some("exemplar_request")
+            && let Some(id) = rec
+                .get("matched")
+                .and_then(|m| m.get("event_id"))
+                .and_then(|x| x.as_str())
+        {
+            return Ok(Selector::Event(id.to_string()));
         }
-        let t = template_of_record(&rec)
-            .ok_or_else(|| anyhow!("evidence {eid} is not a template item (kind {})", rec.get("kind").and_then(|k| k.as_str()).unwrap_or("?")))?;
+        let t = template_of_record(&rec).ok_or_else(|| {
+            anyhow!(
+                "evidence {eid} is not a template item (kind {})",
+                rec.get("kind").and_then(|k| k.as_str()).unwrap_or("?")
+            )
+        })?;
         return Ok(match cited_exemplar(store, &rec) {
             Some(id) => Selector::Event(id),
             None => Selector::Template(t.to_string()),
         });
     }
     match (&a.route, a.status) {
-        (Some(r), Some(s)) => Ok(Selector::RouteStatus(r.clone(), u16::try_from(s).map_err(|_| anyhow!("status out of range"))?)),
+        (Some(r), Some(s)) => Ok(Selector::RouteStatus(
+            r.clone(),
+            u16::try_from(s).map_err(|_| anyhow!("status out of range"))?,
+        )),
         _ => bail!("pass template_id, or eid, or route + status, or event_id"),
     }
 }
@@ -340,7 +411,11 @@ fn resolve_selector(engine: &Engine, investigation: &str, store: &Store, a: &Exe
 /// watermark: the exemplar of a failure is the FIRST request that failed
 /// that way, and the earliest match does not move as data arrives, so the
 /// resolved window re-checks (the same rule `deploy_events` uses).
-fn history_window(store: &Store, cfg: &spyglass_core::Config, w: Option<&WindowArg>) -> Result<Window> {
+fn history_window(
+    store: &Store,
+    cfg: &spyglass_core::Config,
+    w: Option<&WindowArg>,
+) -> Result<Window> {
     match w {
         Some(x) => resolve(store, cfg, Some(x)),
         None => Ok(Window {
@@ -350,7 +425,11 @@ fn history_window(store: &Store, cfg: &spyglass_core::Config, w: Option<&WindowA
     }
 }
 
-pub fn get_exemplar_request(engine: &Engine, investigation: &str, a: &ExemplarArgs) -> Result<(ToolOutput, Value)> {
+pub fn get_exemplar_request(
+    engine: &Engine,
+    investigation: &str,
+    a: &ExemplarArgs,
+) -> Result<(ToolOutput, Value)> {
     let cfg = &engine.cfg;
     let store = engine.store.read().expect("store lock");
     let sel = resolve_selector(engine, investigation, &store, a)?;
@@ -366,14 +445,32 @@ pub fn get_exemplar_request(engine: &Engine, investigation: &str, a: &ExemplarAr
         record["request"]["path"].as_str().unwrap_or("?"),
         record["request"]["body_bytes"],
         ex.with_capture,
-        if origin.is_null() { "none (no 5xx on this request)".to_string() } else { format!("{} {}", origin["instance"].as_str().unwrap_or("?"), origin["status"]) }
+        if origin.is_null() {
+            "none (no 5xx on this request)".to_string()
+        } else {
+            format!(
+                "{} {}",
+                origin["instance"].as_str().unwrap_or("?"),
+                origin["status"]
+            )
+        }
     );
     let (resolved, window) = match &sel {
         Selector::Template(t) => (json!({"template_id": t, "window": w}), Some(w)),
         Selector::RouteStatus(r, s) => (json!({"route": r, "status": s, "window": w}), Some(w)),
         Selector::Event(id) => (json!({"event_id": id}), None),
     };
-    Ok((ToolOutput { payload: json!({"items": [record]}), summary, window, deterministic: true, available: ex.with_capture, records: None }, resolved))
+    Ok((
+        ToolOutput {
+            payload: json!({"items": [record]}),
+            summary,
+            window,
+            deterministic: true,
+            available: ex.with_capture,
+            records: None,
+        },
+        resolved,
+    ))
 }
 
 // ------------------------------------------------------------------ replay_exemplar
@@ -407,12 +504,16 @@ struct Plan {
 
 fn plan(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<Plan> {
     let cfg = &engine.cfg;
-    let n = a.n.unwrap_or(cfg.replay.default_n).clamp(1, cfg.replay.max_n);
+    let n =
+        a.n.unwrap_or(cfg.replay.default_n)
+            .clamp(1, cfg.replay.max_n);
     let store = engine.store.read().expect("store lock");
     let default_w = history_window(&store, cfg, None)?;
 
     // Resolve the exemplar four ways; every path ends in a req_id with a capture.
-    let is_eid = a.exemplar.starts_with('E') && a.exemplar[1..].chars().all(|c| c.is_ascii_digit()) && a.exemplar.len() > 1;
+    let is_eid = a.exemplar.starts_with('E')
+        && a.exemplar[1..].chars().all(|c| c.is_ascii_digit())
+        && a.exemplar.len() > 1;
     let (req_id, template_id, matched_event_id, exemplar_eid) = if is_eid {
         let rec = engine
             .with_investigation(investigation, |inv| inv.evidence.get(&a.exemplar).cloned())
@@ -432,9 +533,17 @@ fn plan(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<Plan> {
                 None => select(&store, &Selector::Template(t.to_string()), &default_w)?,
             };
             let ev = store.events[ex.matched_idx].event_id.clone();
-            (ex.req_id, Some(t.to_string()), Some(ev), Some(a.exemplar.clone()))
+            (
+                ex.req_id,
+                Some(t.to_string()),
+                Some(ev),
+                Some(a.exemplar.clone()),
+            )
         } else {
-            bail!("evidence {} is neither an exemplar request nor a template item", a.exemplar);
+            bail!(
+                "evidence {} is neither an exemplar request nor a template item",
+                a.exemplar
+            );
         }
     } else if store.templates.contains_key(&a.exemplar) {
         let ex = select(&store, &Selector::Template(a.exemplar.clone()), &default_w)?;
@@ -443,9 +552,15 @@ fn plan(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<Plan> {
     } else if store.captures.contains_key(&a.exemplar) {
         (a.exemplar.clone(), None, None, None)
     } else {
-        bail!("'{}' is not an evidence id, a known template_id, or a captured req_id", a.exemplar);
+        bail!(
+            "'{}' is not an evidence id, a known template_id, or a captured req_id",
+            a.exemplar
+        );
     };
-    let &capture_idx = store.captures.get(&req_id).ok_or_else(|| anyhow!("no captured request for req_id {req_id}"))?;
+    let &capture_idx = store
+        .captures
+        .get(&req_id)
+        .ok_or_else(|| anyhow!("no captured request for req_id {req_id}"))?;
     let captured_at = store.events[capture_idx].ts;
     let request = captured(&store, capture_idx, cfg.replay.body_cap)?;
     drop(store);
@@ -460,24 +575,67 @@ fn plan(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<Plan> {
                 "no replay route from captured path {} to service {}; configured: {}",
                 request.path,
                 a.service,
-                cfg.replay.routes.iter().map(|r| format!("{} → {} {}", r.captured_path, r.service, r.path)).collect::<Vec<_>>().join(", ")
+                cfg.replay
+                    .routes
+                    .iter()
+                    .map(|r| format!("{} → {} {}", r.captured_path, r.service, r.path))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         })?;
-    let instances: Vec<&spyglass_core::ServiceCfg> = cfg.services.iter().filter(|s| s.service == a.service && s.version.is_some()).collect();
+    let instances: Vec<&spyglass_core::ServiceCfg> = cfg
+        .services
+        .iter()
+        .filter(|s| s.service == a.service && s.version.is_some())
+        .collect();
     if instances.is_empty() {
-        bail!("{} has no always-on version instances to replay against", a.service);
+        bail!(
+            "{} has no always-on version instances to replay against",
+            a.service
+        );
     }
-    let versions: Vec<String> = if a.versions.is_empty() { instances.iter().filter_map(|s| s.version.clone()).collect() } else { a.versions.clone() };
+    let versions: Vec<String> = if a.versions.is_empty() {
+        instances.iter().filter_map(|s| s.version.clone()).collect()
+    } else {
+        a.versions.clone()
+    };
     let mut targets = Vec::new();
     for v in &versions {
         let inst = instances
             .iter()
             .find(|s| s.version.as_deref() == Some(v.as_str()))
-            .ok_or_else(|| anyhow!("{} has no always-on instance for version {v}; have: {}", a.service, instances.iter().filter_map(|s| s.version.clone()).collect::<Vec<_>>().join(", ")))?;
-        let base = cfg.base_url(inst).ok_or_else(|| anyhow!("no published port for {}", inst.name))?;
-        targets.push((v.clone(), inst.name.clone(), format!("{base}{}", route.path)));
+            .ok_or_else(|| {
+                anyhow!(
+                    "{} has no always-on instance for version {v}; have: {}",
+                    a.service,
+                    instances
+                        .iter()
+                        .filter_map(|s| s.version.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?;
+        let base = cfg
+            .base_url(inst)
+            .ok_or_else(|| anyhow!("no published port for {}", inst.name))?;
+        targets.push((
+            v.clone(),
+            inst.name.clone(),
+            format!("{base}{}", route.path),
+        ));
     }
-    Ok(Plan { req_id, exemplar_eid, template_id, matched_event_id, captured_at, request, service: a.service.clone(), path: route.path.clone(), targets, n })
+    Ok(Plan {
+        req_id,
+        exemplar_eid,
+        template_id,
+        matched_event_id,
+        captured_at,
+        request,
+        service: a.service.clone(),
+        path: route.path.clone(),
+        targets,
+        n,
+    })
 }
 
 /// Compare failure proportions across versions. Pure, so it is tested.
@@ -485,11 +643,39 @@ fn plan(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<Plan> {
 pub fn verdict(rates: &[(String, usize, usize)], min_delta: f64) -> (String, f64, String) {
     if rates.len() < 2 {
         let (v, k, n) = rates.first().cloned().unwrap_or_default();
-        return ("single_version".into(), 0.0, format!("one version only ({v}: {k}/{n}): a proportion, not a comparison; replay a second version to compare"));
+        return (
+            "single_version".into(),
+            0.0,
+            format!(
+                "one version only ({v}: {k}/{n}): a proportion, not a comparison; replay a second version to compare"
+            ),
+        );
     }
-    let rate = |x: &(String, usize, usize)| if x.2 > 0 { x.1 as f64 / x.2 as f64 } else { 0.0 };
-    let lo = rates.iter().min_by(|a, b| rate(a).partial_cmp(&rate(b)).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0))).unwrap();
-    let hi = rates.iter().max_by(|a, b| rate(a).partial_cmp(&rate(b)).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(&a.0))).unwrap();
+    let rate = |x: &(String, usize, usize)| {
+        if x.2 > 0 {
+            x.1 as f64 / x.2 as f64
+        } else {
+            0.0
+        }
+    };
+    let lo = rates
+        .iter()
+        .min_by(|a, b| {
+            rate(a)
+                .partial_cmp(&rate(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        })
+        .unwrap();
+    let hi = rates
+        .iter()
+        .max_by(|a, b| {
+            rate(a)
+                .partial_cmp(&rate(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(b.0.cmp(&a.0))
+        })
+        .unwrap();
     let delta = rate(hi) - rate(lo);
     let d = (delta * 1000.0).round() / 1000.0;
     if delta >= min_delta {
@@ -506,12 +692,21 @@ pub fn verdict(rates: &[(String, usize, usize)], min_delta: f64) -> (String, f64
         return ("not_separated".into(), d, "fails on no version: this exemplar does not reproduce the failure on any version, so it does not support a version-caused hypothesis (try another exemplar class, or the failure is load- or state-dependent)".into());
     }
     if rate(lo) >= 0.9 {
-        return ("not_separated".into(), d, format!("fails on every version ({}/{} on {}, {}/{} on {}): the failure is not a property of the version; the deploy hypothesis is contradicted for this request class", lo.1, lo.2, lo.0, hi.1, hi.2, hi.0));
+        return (
+            "not_separated".into(),
+            d,
+            format!(
+                "fails on every version ({}/{} on {}, {}/{} on {}): the failure is not a property of the version; the deploy hypothesis is contradicted for this request class",
+                lo.1, lo.2, lo.0, hi.1, hi.2, hi.0
+            ),
+        );
     }
     (
         "not_separated".into(),
         d,
-        format!("partial separation (Δ {d:.2} < {min_delta}): load- or state-dependent for this request class; correlational confidence only -- do not write 'caused'"),
+        format!(
+            "partial separation (Δ {d:.2} < {min_delta}): load- or state-dependent for this request class; correlational confidence only -- do not write 'caused'"
+        ),
     )
 }
 
@@ -524,12 +719,29 @@ fn pctl(v: &mut [f64], p: f64) -> f64 {
     (v[i] * 10.0).round() / 10.0
 }
 
-pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArgs) -> Result<(ToolOutput, Value)> {
+pub async fn replay_exemplar(
+    engine: &Engine,
+    investigation: &str,
+    a: &ReplayArgs,
+) -> Result<(ToolOutput, Value)> {
     let cfg = &engine.cfg;
     let plan = plan(engine, investigation, a)?;
     let started = Utc::now();
-    let experiment_id = format!("X-{}", &sha256_hex(format!("{}|{}|{}|{}", plan.req_id, plan.service, investigation, started.timestamp_millis()).as_bytes())[..10]);
-    let method = reqwest::Method::from_bytes(plan.request.method.as_bytes()).unwrap_or(reqwest::Method::POST);
+    let experiment_id = format!(
+        "X-{}",
+        &sha256_hex(
+            format!(
+                "{}|{}|{}|{}",
+                plan.req_id,
+                plan.service,
+                investigation,
+                started.timestamp_millis()
+            )
+            .as_bytes()
+        )[..10]
+    );
+    let method = reqwest::Method::from_bytes(plan.request.method.as_bytes())
+        .unwrap_or(reqwest::Method::POST);
 
     let mut items: Vec<Value> = Vec::new();
     let mut rates: Vec<(String, usize, usize)> = Vec::new();
@@ -541,14 +753,23 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
         let mut transport_errors = 0usize;
         for i in 0..plan.n {
             let rid = format!("{REQ_ID_PREFIX}{experiment_id}-{version}-{i:02}");
-            let mut req = engine.http.request(method.clone(), url).body(plan.request.body.text.clone());
+            let mut req = engine
+                .http
+                .request(method.clone(), url)
+                .body(plan.request.body.text.clone());
             for (k, v) in &plan.request.headers {
-                if matches!(k.as_str(), "host" | "content-length" | "x-request-id" | "connection") {
+                if matches!(
+                    k.as_str(),
+                    "host" | "content-length" | "x-request-id" | "connection"
+                ) {
                     continue;
                 }
                 req = req.header(k, v);
             }
-            req = req.header("x-request-id", &rid).header(REPLAY_HEADER, &experiment_id).header(REPLAY_OF_HEADER, &plan.req_id);
+            req = req
+                .header("x-request-id", &rid)
+                .header(REPLAY_HEADER, &experiment_id)
+                .header(REPLAY_OF_HEADER, &plan.req_id);
             let t = Instant::now();
             match req.send().await {
                 Ok(resp) => {
@@ -561,7 +782,9 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
                         // Group failure bodies with our own request id masked, so
                         // twenty identical failures are one line, not twenty.
                         let masked = body.replace(&rid, "<replay-req-id>");
-                        *bodies.entry((st.to_string(), cap_str(&masked, BODY_EXCERPT_CAP))).or_default() += 1;
+                        *bodies
+                            .entry((st.to_string(), cap_str(&masked, BODY_EXCERPT_CAP)))
+                            .or_default() += 1;
                     }
                 }
                 Err(e) => {
@@ -569,14 +792,28 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
                     failures += 1;
                     transport_errors += 1;
                     *statuses.entry("transport_error".into()).or_default() += 1;
-                    let kind = if e.is_timeout() { "timeout" } else if e.is_connect() { "connect" } else { "transport" };
-                    *bodies.entry(("transport_error".into(), format!("{kind}: {}", cap_str(&e.to_string(), 120)))).or_default() += 1;
+                    let kind = if e.is_timeout() {
+                        "timeout"
+                    } else if e.is_connect() {
+                        "connect"
+                    } else {
+                        "transport"
+                    };
+                    *bodies
+                        .entry((
+                            "transport_error".into(),
+                            format!("{kind}: {}", cap_str(&e.to_string(), 120)),
+                        ))
+                        .or_default() += 1;
                 }
             }
         }
         let n = plan.n;
         let rate = failures as f64 / n as f64;
-        let distinct: Vec<Value> = bodies.iter().map(|((st, b), c)| json!({"status": st, "count": c, "body": b})).collect();
+        let distinct: Vec<Value> = bodies
+            .iter()
+            .map(|((st, b), c)| json!({"status": st, "count": c, "body": b}))
+            .collect();
         rates.push((version.clone(), failures, n));
         items.push(json!({
             "kind": "replay_result",
@@ -593,7 +830,10 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
         }));
     }
     let (verdict_s, delta, reading) = verdict(&rates, cfg.replay.separation_min_delta);
-    let proportions: BTreeMap<String, String> = rates.iter().map(|(v, k, n)| (v.clone(), format!("{k}/{n}"))).collect();
+    let proportions: BTreeMap<String, String> = rates
+        .iter()
+        .map(|(v, k, n)| (v.clone(), format!("{k}/{n}")))
+        .collect();
     let finished = Utc::now();
     let payload = json!({
         "experiment_id": experiment_id,
@@ -622,9 +862,16 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
     let summary = format!(
         "replay_exemplar req {}{} {}: {} → {} (Δ {:.2})",
         &plan.req_id[..plan.req_id.len().min(8)],
-        plan.template_id.as_deref().map(|t| format!(" ({t})")).unwrap_or_default(),
+        plan.template_id
+            .as_deref()
+            .map(|t| format!(" ({t})"))
+            .unwrap_or_default(),
         plan.service,
-        rates.iter().map(|(v, k, n)| format!("{v} {k}/{n}")).collect::<Vec<_>>().join(", "),
+        rates
+            .iter()
+            .map(|(v, k, n)| format!("{v} {k}/{n}"))
+            .collect::<Vec<_>>()
+            .join(", "),
         verdict_s,
         delta
     );
@@ -633,7 +880,17 @@ pub async fn replay_exemplar(engine: &Engine, investigation: &str, a: &ReplayArg
         "service": plan.service, "versions": plan.targets.iter().map(|t| t.0.clone()).collect::<Vec<_>>(), "n": plan.n,
         "request": {"method": plan.request.method, "path": plan.path, "headers": plan.request.headers, "body_sha256": sha256_hex(plan.request.body.text.as_bytes())},
     });
-    Ok((ToolOutput { payload, summary, window: None, deterministic: false, available: rates.len(), records: None }, resolved))
+    Ok((
+        ToolOutput {
+            payload,
+            summary,
+            window: None,
+            deterministic: false,
+            available: rates.len(),
+            records: None,
+        },
+        resolved,
+    ))
 }
 
 // ------------------------------------------------------------------ tests
@@ -644,7 +901,11 @@ mod tests {
     use spyglass_core::{DrainCfg, Event};
 
     fn store() -> Store {
-        Store::new(DrainCfg { depth: 3, similarity_threshold: 0.5, max_children: 100 })
+        Store::new(DrainCfg {
+            depth: 3,
+            similarity_threshold: 0.5,
+            max_children: 100,
+        })
     }
 
     fn ev(store: &mut Store, instance: &str, n: u64, line: &str) {
@@ -653,39 +914,90 @@ mod tests {
     }
 
     fn w(from: &str, to: &str) -> Window {
-        Window { from: from.parse().unwrap(), to: to.parse().unwrap() }
+        Window {
+            from: from.parse().unwrap(),
+            to: to.parse().unwrap(),
+        }
     }
 
     /// Files are ingested one after another, so the store's order is
     /// payments then gateway here -- the opposite of time order.
     fn s1_like() -> Store {
         let mut s = store();
-        ev(&mut s, "payments-v2", 1, r#"{"ts":"2026-08-29T09:27:46.000Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-later","msg":"payment validation failed: unsupported currency GBP req=r-later","route":"/charge","status":500,"stack":"x"}"#);
-        ev(&mut s, "payments-v2", 2, r#"{"ts":"2026-08-29T09:27:45.287Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-first","msg":"payment validation failed: unsupported currency EUR req=r-first","route":"/charge","status":500,"stack":"x"}"#);
-        ev(&mut s, "payments-v2", 3, r#"{"ts":"2026-08-29T09:27:45.100Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-nocap","msg":"payment validation failed: unsupported currency JPY req=r-nocap","route":"/charge","status":500,"stack":"x"}"#);
-        ev(&mut s, "orders", 1, r#"{"ts":"2026-08-29T09:27:45.290Z","service":"orders","instance":"orders","version":"v1.1","level":"ERROR","req_id":"r-first","msg":"payments charge failed with HTTP 500","route":"/orders","status":502,"upstream":"payments"}"#);
-        ev(&mut s, "gateway", 1, r#"{"ts":"2026-08-29T09:27:45.280Z","service":"gateway","instance":"gateway","version":"v1","level":"INFO","req_id":"r-first","msg":"request captured","kind":"request_capture","method":"POST","path":"/checkout","headers":{"content-type":"application/json","x-request-id":"r-first","authorization":"Bearer nope","user-agent":"ua"},"body":"{\"currency\":\"EUR\",\"customer\":\"cust-1\",\"card_class\":\"standard\",\"amount\":42.1}"}"#);
-        ev(&mut s, "gateway", 2, r#"{"ts":"2026-08-29T09:27:45.295Z","service":"gateway","instance":"gateway","version":"v1","level":"ERROR","req_id":"r-first","msg":"checkout failed: orders returned HTTP 502","route":"/checkout","status":502,"upstream":"orders"}"#);
-        ev(&mut s, "gateway", 3, r#"{"ts":"2026-08-29T09:27:45.990Z","service":"gateway","instance":"gateway","version":"v1","level":"INFO","req_id":"r-later","msg":"request captured","kind":"request_capture","method":"POST","path":"/checkout","headers":{"content-type":"application/json"},"body":"{\"currency\":\"GBP\",\"amount\":1}"}"#);
+        ev(
+            &mut s,
+            "payments-v2",
+            1,
+            r#"{"ts":"2026-08-29T09:27:46.000Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-later","msg":"payment validation failed: unsupported currency GBP req=r-later","route":"/charge","status":500,"stack":"x"}"#,
+        );
+        ev(
+            &mut s,
+            "payments-v2",
+            2,
+            r#"{"ts":"2026-08-29T09:27:45.287Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-first","msg":"payment validation failed: unsupported currency EUR req=r-first","route":"/charge","status":500,"stack":"x"}"#,
+        );
+        ev(
+            &mut s,
+            "payments-v2",
+            3,
+            r#"{"ts":"2026-08-29T09:27:45.100Z","service":"payments","instance":"payments-v2","version":"v2","level":"ERROR","req_id":"r-nocap","msg":"payment validation failed: unsupported currency JPY req=r-nocap","route":"/charge","status":500,"stack":"x"}"#,
+        );
+        ev(
+            &mut s,
+            "orders",
+            1,
+            r#"{"ts":"2026-08-29T09:27:45.290Z","service":"orders","instance":"orders","version":"v1.1","level":"ERROR","req_id":"r-first","msg":"payments charge failed with HTTP 500","route":"/orders","status":502,"upstream":"payments"}"#,
+        );
+        ev(
+            &mut s,
+            "gateway",
+            1,
+            r#"{"ts":"2026-08-29T09:27:45.280Z","service":"gateway","instance":"gateway","version":"v1","level":"INFO","req_id":"r-first","msg":"request captured","kind":"request_capture","method":"POST","path":"/checkout","headers":{"content-type":"application/json","x-request-id":"r-first","authorization":"Bearer nope","user-agent":"ua"},"body":"{\"currency\":\"EUR\",\"customer\":\"cust-1\",\"card_class\":\"standard\",\"amount\":42.1}"}"#,
+        );
+        ev(
+            &mut s,
+            "gateway",
+            2,
+            r#"{"ts":"2026-08-29T09:27:45.295Z","service":"gateway","instance":"gateway","version":"v1","level":"ERROR","req_id":"r-first","msg":"checkout failed: orders returned HTTP 502","route":"/checkout","status":502,"upstream":"orders"}"#,
+        );
+        ev(
+            &mut s,
+            "gateway",
+            3,
+            r#"{"ts":"2026-08-29T09:27:45.990Z","service":"gateway","instance":"gateway","version":"v1","level":"INFO","req_id":"r-later","msg":"request captured","kind":"request_capture","method":"POST","path":"/checkout","headers":{"content-type":"application/json"},"body":"{\"currency\":\"GBP\",\"amount\":1}"}"#,
+        );
         s
     }
 
     fn template_of(s: &Store, req_id: &str) -> String {
-        s.events.iter().find(|e| e.req_id.as_deref() == Some(req_id) && e.instance == "payments-v2").unwrap().template_id.clone()
+        s.events
+            .iter()
+            .find(|e| e.req_id.as_deref() == Some(req_id) && e.instance == "payments-v2")
+            .unwrap()
+            .template_id
+            .clone()
     }
 
     #[test]
     fn the_capture_index_is_keyed_by_request_id() {
         let s = s1_like();
         assert_eq!(s.captures.len(), 2);
-        assert_eq!(s.events[s.captures["r-first"]].kind.as_deref(), Some("request_capture"));
+        assert_eq!(
+            s.events[s.captures["r-first"]].kind.as_deref(),
+            Some("request_capture")
+        );
     }
 
     #[test]
     fn selection_is_the_earliest_matching_event_with_a_capture_regardless_of_ingest_order() {
         let s = s1_like();
         let t = template_of(&s, "r-first");
-        let ex = select(&s, &Selector::Template(t), &w("2026-08-29T09:27:00Z", "2026-08-29T09:28:00Z")).unwrap();
+        let ex = select(
+            &s,
+            &Selector::Template(t),
+            &w("2026-08-29T09:27:00Z", "2026-08-29T09:28:00Z"),
+        )
+        .unwrap();
         // r-nocap is earlier but has no capture; r-first beats r-later on ts.
         assert_eq!(ex.req_id, "r-first");
         assert_eq!((ex.matching, ex.with_capture), (3, 2));
@@ -694,17 +1006,48 @@ mod tests {
     #[test]
     fn an_event_selector_ignores_the_window_and_needs_a_capture() {
         let s = s1_like();
-        let ev = s.events.iter().find(|e| e.req_id.as_deref() == Some("r-later") && e.instance == "payments-v2").unwrap().event_id.clone();
-        let ex = select(&s, &Selector::Event(ev), &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")).unwrap();
+        let ev = s
+            .events
+            .iter()
+            .find(|e| e.req_id.as_deref() == Some("r-later") && e.instance == "payments-v2")
+            .unwrap()
+            .event_id
+            .clone();
+        let ex = select(
+            &s,
+            &Selector::Event(ev),
+            &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z"),
+        )
+        .unwrap();
         assert_eq!(ex.req_id, "r-later");
-        let nocap = s.events.iter().find(|e| e.req_id.as_deref() == Some("r-nocap")).unwrap().event_id.clone();
-        assert!(select(&s, &Selector::Event(nocap), &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")).unwrap_err().to_string().contains("no captured request"));
+        let nocap = s
+            .events
+            .iter()
+            .find(|e| e.req_id.as_deref() == Some("r-nocap"))
+            .unwrap()
+            .event_id
+            .clone();
+        assert!(
+            select(
+                &s,
+                &Selector::Event(nocap),
+                &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("no captured request")
+        );
     }
 
     #[test]
     fn route_status_selects_through_the_edge_line() {
         let s = s1_like();
-        let ex = select(&s, &Selector::RouteStatus("/checkout".into(), 502), &w("2026-08-29T09:27:00Z", "2026-08-29T09:28:00Z")).unwrap();
+        let ex = select(
+            &s,
+            &Selector::RouteStatus("/checkout".into(), 502),
+            &w("2026-08-29T09:27:00Z", "2026-08-29T09:28:00Z"),
+        )
+        .unwrap();
         assert_eq!(ex.req_id, "r-first");
     }
 
@@ -712,9 +1055,22 @@ mod tests {
     fn selection_respects_the_window_and_reports_why_it_found_nothing() {
         let s = s1_like();
         let t = template_of(&s, "r-first");
-        let err = select(&s, &Selector::Template(t), &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")).unwrap_err().to_string();
+        let err = select(
+            &s,
+            &Selector::Template(t),
+            &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z"),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("0 matching"), "{err}");
-        assert!(select(&s, &Selector::Template("T999".into()), &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")).is_err());
+        assert!(
+            select(
+                &s,
+                &Selector::Template("T999".into()),
+                &w("2026-08-29T09:00:00Z", "2026-08-29T09:10:00Z")
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -728,10 +1084,24 @@ mod tests {
         let rec = exemplar_record(&s, &cfg, &ex, &Selector::Template(t), &win).unwrap();
         let headers = rec["request"]["headers"].as_object().unwrap();
         assert!(!headers.contains_key("authorization"));
-        assert_eq!(rec["sanitization"]["headers_dropped"], json!(["authorization"]));
-        assert_eq!(rec["request"]["body"], json!(r#"{"currency":"EUR","customer":"cust-1","card_class":"standard","amount":42.1}"#));
+        assert_eq!(
+            rec["sanitization"]["headers_dropped"],
+            json!(["authorization"])
+        );
+        assert_eq!(
+            rec["request"]["body"],
+            json!(
+                r#"{"currency":"EUR","customer":"cust-1","card_class":"standard","amount":42.1}"#
+            )
+        );
         let chain = rec["chain"].as_array().unwrap();
-        assert_eq!(chain.iter().map(|c| c["instance"].as_str().unwrap()).collect::<Vec<_>>(), vec!["payments-v2", "orders", "gateway"]);
+        assert_eq!(
+            chain
+                .iter()
+                .map(|c| c["instance"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["payments-v2", "orders", "gateway"]
+        );
         assert_eq!(rec["outcome"]["origin_5xx"]["instance"], "payments-v2");
         assert_eq!(rec["outcome"]["edge"]["status"], 502);
         assert_eq!(rec["replay"]["replayable"], true);
