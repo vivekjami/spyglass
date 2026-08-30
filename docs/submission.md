@@ -9,7 +9,7 @@ internal target 22:00 IST. Form: <https://forms.gle/PxGLsWW1HPyroQ5u9>.
 | Project | **Spyglass** — evidence engineering for AI-powered incident investigation |
 | Team | Vivek Jami (solo) |
 | Public repository | <https://github.com/vivekjami/spyglass> |
-| Demo video (≈3:00) | _paste the link after recording — see [`demo.md`](demo.md) → Filming-day runbook_ |
+| Demo video (≈3:00) | _paste the link after recording — see [`demo-day.md`](demo-day.md)_ |
 | Write-up | the section below (also `docs/blog/draft.md` for the long form) |
 | Qodo Code Review Evidence | `README.md` → [Qodo Code Review Evidence](../README.md#qodo-code-review-evidence) |
 | TrueForge capabilities demonstrated | MCP tool access (4 servers, 21 tools), the human approval gate on `rollback`, engine-judged and engine-paced post-action verification, programmatic sessions / turns / approvals / token accounting over the REST API, dynamic sub-agents (configured and briefed; the fan-out is conditional and did not trigger on these scenarios). The sandbox is enabled in every condition and the agent calls it, but it never executed a command — a harness bootstrap failure diagnosed in `docs/phase11-findings.md` F1, symmetric across conditions |
@@ -89,9 +89,10 @@ run files.
 
 Only these need a human; everything else is in the repository.
 
-1. **Record the video** per [`demo.md`](demo.md) → Filming-day runbook
-   (preflight, four captures, resets, and the narration written from the
-   measured tables; two takes, voiceover separate, ≤ 3:00). Upload it.
+1. **Record the video** — follow [`demo-day.md`](demo-day.md) end to end:
+   setup, recorder, the four captures, the second-by-second cut, the
+   word-for-word narration and the ffmpeg assembly. Two takes of everything,
+   voiceover recorded separately, ≤ 3:00. Upload it.
 
 2. **Authorize Qodo Merge on the repository** — GitHub → Marketplace →
    [Qodo Merge](https://github.com/apps/qodo-merge-pro), one click by the

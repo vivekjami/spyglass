@@ -1013,6 +1013,8 @@ Cache hit rate: **Future / optional** — no cache exists in v0 (bounded queries
 | 2:25–2:45 | The ledger | postmortem citing E1–E7; one `get_evidence(E3)` dereference | Auditability made concrete in five seconds |
 | 2:45–3:00 | The numbers | baseline vs Spyglass table (real measured values only) + repo/Qodo end card | The claim, settled by measurement, not narration |
 
+**Filming it:** [`docs/demo-day.md`](docs/demo-day.md) is the operator's runbook — setup from a cold machine, recorder setup, the four captures, the second-by-second cut, the narration, the ffmpeg recipes, and what to do when a take goes wrong.
+
 Production notes: baseline footage is captured in Phase 2, not reshot Sunday; voiceover recorded separately from screen capture, two takes; every clip kept; if a segment's feature was dropped (drop order), the segment is cut, never faked.
 
 ---
