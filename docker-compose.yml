@@ -6,6 +6,11 @@
 # or rollback is a file write, not a container restart, and a failing request
 # can be replayed against either version without touching live routing.
 #
+# fraudcheck is an "external vendor": orders calls it synchronously; it has
+# no log volume, no scraped metrics and no host port -- an unobserved
+# dependency, on purpose (scenarios S2, S6). ./data/knobs is how a scenario
+# changes the environment without a change event; no agent tool reads it.
+#
 # Host ports are overridable (GATEWAY_PORT etc., read from .env) because 8080
 # is busy on more machines than not.
 # Services run as the host user so the bind-mounted logs stay deletable
@@ -20,6 +25,7 @@ x-service: &service
   volumes:
     - ./data/logs:/var/log/spyglass
     - ./data/deploy:/deploy:ro
+    - ./data/knobs:/knobs:ro
   healthcheck:
     test: ["CMD-SHELL", "python -c \"import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PORT']+'/health',timeout=2)\""]
     interval: 5s
@@ -44,7 +50,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    # noeviction: payments' idempotency records must never vanish silently;
+    # a write into a full store fails loudly instead (scenario S3).
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -77,6 +85,24 @@ services:
     depends_on:
       redis: {condition: service_healthy}
 
+  fraudcheck:
+    build: ./target-system
+    user: "${SPYGLASS_UID:-1000}:${SPYGLASS_GID:-1000}"
+    restart: unless-stopped
+    command: ["python", "-m", "fraudcheck.app"]
+    environment:
+      SERVICE_NAME: fraudcheck
+      INSTANCE_NAME: fraudcheck
+      PORT: "8090"
+    volumes:
+      - ./data/knobs:/knobs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:'+os.environ['PORT']+'/health',timeout=2)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   orders:
     <<: *service
     command: ["python", "-m", "orders.app"]
@@ -88,11 +114,13 @@ services:
       DATABASE_URL: postgresql://spyglass:spyglass@postgres:5432/spyglass
       PAYMENTS_V1_URL: http://payments-v1:8082
       PAYMENTS_V2_URL: http://payments-v2:8082
+      FRAUD_URL: http://fraudcheck:8090
     ports: ["127.0.0.1:${ORDERS_PORT:-8081}:8081"]
     depends_on:
       postgres: {condition: service_healthy}
       payments-v1: {condition: service_healthy}
       payments-v2: {condition: service_healthy}
+      fraudcheck: {condition: service_healthy}
 
   gateway:
     <<: *service

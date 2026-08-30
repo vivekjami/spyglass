@@ -1,0 +1,702 @@
+{
+  "scenario": "s3",
+  "condition": "baseline",
+  "agent": "spyglass-baseline",
+  "run_id": "20260829T144228Z",
+  "tag": "bench-r1",
+  "benchmark": true,
+  "valid": true,
+  "invalid_reason": null,
+  "model": "google-gemini/gemini-3-6-flash",
+  "started_at": "2026-08-29T14:42:38.217Z",
+  "finished_at": "2026-08-29T14:43:41.538Z",
+  "alert": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it.",
+  "approval_policy": "allow",
+  "ground_truth_version": 1,
+  "scenario_run": {
+    "scenario": "s3-redis-pressure",
+    "run_id": "20260829T143613Z",
+    "fast": true,
+    "seed": 42,
+    "rate": 10.0,
+    "t_start": "2026-08-29T14:36:14.152Z",
+    "t_fault": "2026-08-29T14:41:14.408Z",
+    "t_end": "2026-08-29T14:42:24.600Z",
+    "steady_secs": 300,
+    "lead_secs": 0,
+    "post_secs": 70,
+    "fault": {
+      "kind": "redis_fill",
+      "bytes": 66000000,
+      "redis_used_memory_after": 68933168,
+      "redis_maxmemory": 67108864,
+      "policy": "noeviction",
+      "change_event": null,
+      "mechanism": "store over maxmemory -> every write refused (OOM) -> payments fails closed on its idempotency write (503)"
+    }
+  },
+  "provenance": {
+    "condition_file": "bench/conditions/baseline.json",
+    "condition_sha256": "0eb5e48ef0d7460a",
+    "instructions_file": "agent/baseline-sop.md",
+    "instructions_sha256": "13814a4950e908d7"
+  },
+  "outcome": "completed",
+  "metrics": {
+    "wall_time_secs": 43.3,
+    "turns": 1,
+    "tool_calls": 13,
+    "tool_calls_by_name": {
+      "current_versions": 1,
+      "deploy_events": 1,
+      "get_current_datetime": 1,
+      "get_metric": 5,
+      "grep_logs": 2,
+      "list_services": 1,
+      "tail_logs": 2
+    },
+    "model_calls": 9,
+    "threads": [
+      "main"
+    ],
+    "input_tokens": 225203,
+    "output_tokens": 5827,
+    "total_tokens": 231030,
+    "cache_read_tokens": 146621,
+    "tool_response_bytes": 90081,
+    "approvals": [],
+    "rollbacks_executed": [],
+    "journal_entries_added": [],
+    "journal_kinds_added": {},
+    "versions_before": {
+      "gateway": "v1",
+      "orders": "v1",
+      "payments": "v1"
+    },
+    "versions_after": {
+      "gateway": "v1",
+      "orders": "v1",
+      "payments": "v1"
+    },
+    "error_rate_pre_run": {
+      "window_secs": 10,
+      "requests": 100.0,
+      "errors": 100.0,
+      "rate": 1.0,
+      "p95_latency_ms_le": 100.0
+    },
+    "error_rate_post_run": {
+      "window_secs": 20,
+      "requests": 194.0,
+      "errors": 191.0,
+      "rate": 0.9845360824742269,
+      "p95_latency_ms_le": 100.0
+    },
+    "sandbox_exec_commands": []
+  },
+  "final_output": "### Investigation Report\n\n#### 1. Symptom Confirmation\n- **Alert**: Gateway `/checkout` HTTP 5xx error rate elevated above the 5% threshold.\n- **Timeline**: Error rate spike began at `2026-08-29T14:41:14Z`.\n- **Evidence (E1)**: Metrics on `gateway` (`http://127.0.0.1:18080/metrics`) show `requests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"}` surged to `1102` total failures, with zero successful 200 responses since `14:41:14Z`.\n\n#### 2. Call-Path & Failure Origin\n- **Upstream Cascade**: \n  - `gateway` returns HTTP 502 Bad Gateway because upstream `orders` returned 502.\n  - **Evidence (E2)**: `orders` logs and metrics (`http://127.0.0.1:8081/metrics`) show `upstream_requests_total{service=\"orders\",status=\"503\",upstream=\"payments\",version=\"v1\"}` because `payments-v1` is returning HTTP 503 Service Unavailable on `/charge`.\n- **Root Failure**:\n  - **Evidence (E3)**: `payments-v1` logs (`data/logs/payments-v1.jsonl`) show `/charge` failing with OutOfMemoryError when writing to Redis:\n    ```json\n    {\"ts\":\"2026-08-29T14:41:14.416Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n    {\"ts\":\"2026-08-29T14:41:14.417Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"redis memory pressure: used_memory 69052400 maxmemory 67108864 policy noeviction\",\"upstream\":\"redis\"}\n    ```\n\n#### 3. Deploy & Change History Check\n- **Evidence (E4)**: Querying `deploy_events` and `current_versions` confirms no deployment or routing change has occurred since initial system setup at `2026-08-29T14:36:13.371Z`:\n  - `gateway`: `v1`\n  - `orders`: `v1`\n  - `payments`: `v1`\n- No recent deployment caused this issue.\n\n#### 4. Root Cause Analysis\nRedis hit its configured `maxmemory` limit of 64MB (`67,108,864` bytes) under the `noeviction` eviction policy (`used_memory` reached `69,052,400` bytes). Because the eviction policy is `noeviction`, Redis rejects write commands from `payments-v1` with an `OutOfMemoryError`. `payments-v1` fails the `/charge` request with HTTP 503 when cache writes fail, escalating up through `orders` and `gateway`.\n\n#### 5. Action Taken & Verification\n- **Action**: `report_only`. Because this incident is caused by infrastructure resource exhaustion (Redis maxmemory) and not a software deployment, rolling back any service would not resolve the issue and is not applicable.\n- **Operator Recommended Remediation**:\n  1. Clear/flush stale cache keys or configure a proper eviction policy in Redis (e.g., `allkeys-lru` or `volatile-lru`).\n  2. Increase Redis `maxmemory` allocation.\n- **Verification**: Consecutive metric reads on `gateway` over a 2-second interval (`1788014584` to `1788014586`) show 22 new requests (`1080` -> `1102`), all returning HTTP 502 Bad Gateway. As no deploy action was executed, 100% error rate remains until Redis cache memory is freed.\n\n```verdict\nculprit_service: redis\nculprit_change: none\ncause: Redis cache reached maxmemory limit under noeviction policy causing payment charge cache writes to fail with OutOfMemoryError.\naction: report_only\nevidence_label: causal\n```",
+  "turns": [
+    {
+      "turn_id": "01m16zhz0bawx1f47fygsnwjsh.local",
+      "status": "done",
+      "events": 25,
+      "tool_calls": [
+        "list_services",
+        "current_versions",
+        "deploy_events",
+        "get_current_datetime",
+        "get_metric",
+        "get_metric",
+        "get_metric",
+        "tail_logs",
+        "grep_logs",
+        "tail_logs",
+        "grep_logs",
+        "get_metric",
+        "get_metric"
+      ],
+      "usage": {
+        "input_tokens": 225203,
+        "output_tokens": 5827,
+        "cache_read_tokens": 146621,
+        "model_calls": 9,
+        "threads": [
+          "main"
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "turn.created",
+      "id": "01m16zhz0ne85ayhn5rs59k82c",
+      "turn_id": "01m16zhz0bawx1f47fygsnwjsh.local",
+      "previous_turn_id": null,
+      "input": [
+        {
+          "type": "user.message",
+          "content": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it."
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T14:42:38.226Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m16zhz16e1rzhnradjhmdb3p",
+      "created_at": "2026-08-29T14:42:38.246Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "spyglass-deployer",
+          "id": "spyglass-deployer",
+          "session_id": "150b50cf-e940-48c7-ac17-53bffc5779a2",
+          "transport_type": "streamable-http"
+        },
+        {
+          "name": "spyglass-rawtools",
+          "id": "spyglass-rawtools",
+          "session_id": "d328d807-d2c4-4b7f-8108-09c0c4ea5826",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1280188",
+          "type": "function",
+          "function": {
+            "name": "list_services",
+            "arguments": "{}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "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"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "list_services",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_1280195",
+          "type": "function",
+          "function": {
+            "name": "current_versions",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "current_versions",
+            "server_id": "spyglass-deployer",
+            "server_name": "spyglass-deployer"
+          }
+        },
+        {
+          "id": "call_1280196",
+          "type": "function",
+          "function": {
+            "name": "deploy_events",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "deploy_events",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zhz17waef3ck0hhxz0afg",
+      "created_at": "2026-08-29T14:42:42.297Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 5544,
+        "output_tokens": 661,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 0
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1280188",
+      "content": "[\n  {\n    \"name\": \"gateway\",\n    \"role\": \"public edge; POST /checkout\",\n    \"upstreams\": [\n      \"orders\"\n    ],\n    \"log_file\": \"data/logs/gateway.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:18080/metrics\",\n    \"base_url\": \"http://127.0.0.1:18080\"\n  },\n  {\n    \"name\": \"orders\",\n    \"role\": \"persists orders; scores each order with the fraudcheck vendor (synchronous); charges via payments\",\n    \"upstreams\": [\n      \"payments-v1 or payments-v2 (per current routing)\",\n      \"postgres\",\n      \"fraudcheck\"\n    ],\n    \"log_file\": \"data/logs/orders.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8081/metrics\",\n    \"base_url\": \"http://127.0.0.1:8081\"\n  },\n  {\n    \"name\": \"payments-v1\",\n    \"role\": \"payments service, version v1\",\n    \"upstreams\": [\n      \"redis\"\n    ],\n    \"log_file\": \"data/logs/payments-v1.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8082/metrics\",\n    \"base_url\": \"http://127.0.0.1:8082\"\n  },\n  {\n    \"name\": \"payments-v2\",\n    \"role\": \"payments service, version v2\",\n    \"upstreams\": [\n      \"redis\"\n    ],\n    \"log_file\": \"data/logs/payments-v2.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8083/metrics\",\n    \"base_url\": \"http://127.0.0.1:8083\"\n  },\n  {\n    \"name\": \"loadgen\",\n    \"role\": \"synthetic traffic generator\",\n    \"upstreams\": [\n      \"gateway\"\n    ],\n    \"log_file\": \"data/logs/loadgen.jsonl\",\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"postgres\",\n    \"role\": \"orders database\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"redis\",\n    \"role\": \"payments cache\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"fraudcheck\",\n    \"role\": \"external fraud-scoring vendor (third party), called synchronously by orders before each charge; NOT observed: no logs, no metrics, no endpoint here\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  }\n]",
+      "type": "tool.response",
+      "id": "01m16zj3065v0rwzzw6zq609xs",
+      "created_at": "2026-08-29T14:42:42.308Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_1280195",
+      "content": "{\"gateway\":{\"version\":\"v1\",\"deploy_id\":null,\"since\":\"2026-08-29T14:36:13.371Z\"},\"orders\":{\"version\":\"v1\",\"deploy_id\":null,\"since\":\"2026-08-29T14:36:13.371Z\"},\"payments\":{\"version\":\"v1\",\"deploy_id\":null,\"since\":\"2026-08-29T14:36:13.371Z\"}}",
+      "type": "tool.response",
+      "id": "01m16zj3065v0rwzzw6zq609xt",
+      "created_at": "2026-08-29T14:42:42.307Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_1280196",
+      "content": "# 1 journal entries from data/deploy/journal.jsonl\n{\"n\":1,\"kind\":\"init\",\"service\":\"*\",\"version\":\"v1\",\"ts\":\"2026-08-29T14:36:13.371Z\",\"actor\":\"operator\",\"note\":\"all services at v1\"}\n",
+      "type": "tool.response",
+      "id": "01m16zj3065v0rwzzw6zq609xv",
+      "created_at": "2026-08-29T14:42:42.310Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_940002",
+          "type": "function",
+          "function": {
+            "name": "get_current_datetime",
+            "arguments": "{}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Ev8ECvwEARFNMg9SboBfz985799GbmPptGQHn2oUu8RgXQuSCTmshjs+umjsWnesTKNOkL56ge7wu0WuTAA+AP4Kwthe13fdaP4hN6VSek4IBIBA8MDhCXhAkExTgc89QjtricbomNbuSSZV2JSzG6r18R2SCT7nL9su3Mw2cXQp1P7Gcc0ZABgWqKm59+zW882qjZ5DI00Czy4eJ/B5LfMhZvz3sd4tilag5kBfZnd0fv8RiqRFtba7HE0HL49NLgvqsT1a7CnoiRr65h9gjrMAdMT0AF/M26UaSGyLjUc9a/VjjJwo0bdpfTJwMPeaXnDGQF2p6V4mKv4LUvh8Kj3VXW044ayMmgYg0E3yQDvtN0N/XXWJYaCCd4/zohnTZlxHPyYqxYL3JWLgSXFLhBv05jqBtjhT3rYHbRzsS2vXhP9zQqxRc6cUpFECpsuYLfPJjL+Tidv/k2attHI+3Uun2UES6xna1r8PQv+JDYJwSqxatZ2j3haaxc9HKOiL0euhjF9grVzkWDWABOpqC7a/QxHS1708vOxc/lDWMVq9NHOZVj1Tx3eehkaFv4al96HCmKhvPss4fVNYCJ0qX/zcJjzHx60/ODgVXnZyO5FHXYd/VC2jAdxnvRVxlMBg8d9maHlAJDwUnBFgwgosqfYHgFQclHID1s6MpOAyjdOnj78egrIRBpjellQVruO0wfKs6PzzEX5MtGQiDxsKpEhmVZNjDncas/mD+YVUiSAeMjFifUqveb4fXzVfs3MHJy5j+cymsrJbkgAbG/3bAPuRcSzxttb3JZ32VdBYBFnb26iqVaVRS6NzNJkH/YJcIJvfGWOPl1LNc1f8Ljqk3gNs"
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "get_current_datetime"
+          }
+        },
+        {
+          "id": "call_940003",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_940007",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"orders\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_940011",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"payments-v1\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zj30b4gvq2sx282n6np8j",
+      "created_at": "2026-08-29T14:42:44.855Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 7228,
+        "output_tokens": 209,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 1660
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_940002",
+      "content": "{\"unixEpochMS\":1788014564858,\"iso\":\"2026-08-29T14:42:44.858Z\"}",
+      "type": "tool.response",
+      "id": "01m16zj5gcsg9qgkkdzkfnx9ax",
+      "created_at": "2026-08-29T14:42:44.858Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_940003",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788014564)\npython_gc_objects_collected_total{generation=\"0\"} 371658.0\npython_gc_objects_collected_total{generation=\"1\"} 55640.0\npython_gc_objects_collected_total{generation=\"2\"} 3567.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 742.0\npython_gc_collections_total{generation=\"1\"} 67.0\npython_gc_collections_total{generation=\"2\"} 3.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3334016e+07\nprocess_start_time_seconds 1.78801416341e+09\nprocess_cpu_seconds_total 38.64\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 2954.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 71.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 882.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.7880141718154325e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.7880141807367737e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880144744235067e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 882.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880144744235616e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 45.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 71.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 116.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 3782.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 3907.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 291771.90000000066\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788014171815491e+09\n",
+      "type": "tool.response",
+      "id": "01m16zj5gcsg9qgkkdzkfnx9ay",
+      "created_at": "2026-08-29T14:42:44.873Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_940007",
+      "content": "# http://127.0.0.1:8081/metrics (fetched unix 1788014564)\npython_gc_objects_collected_total{generation=\"0\"} 518952.0\npython_gc_objects_collected_total{generation=\"1\"} 74770.0\npython_gc_objects_collected_total{generation=\"2\"} 3579.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 935.0\npython_gc_collections_total{generation=\"1\"} 84.0\npython_gc_collections_total{generation=\"2\"} 3.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.42180352e+08\nprocess_resident_memory_bytes 5.7286656e+07\nprocess_start_time_seconds 1.78801415699e+09\nprocess_cpu_seconds_total 60.019999999999996\nprocess_open_fds 18.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/orders\",service=\"orders\",status=\"200\"} 2954.0\nrequests_total{route=\"/orders\",service=\"orders\",status=\"400\"} 71.0\nrequests_total{route=\"/orders\",service=\"orders\",status=\"502\"} 883.0\nrequests_created{route=\"/orders\",service=\"orders\",status=\"200\"} 1.7880141718122604e+09\nrequests_created{route=\"/orders\",service=\"orders\",status=\"400\"} 1.7880141807335372e+09\nrequests_created{route=\"/orders\",service=\"orders\",status=\"502\"} 1.7880144744209216e+09\nerrors_total{route=\"/orders\",service=\"orders\"} 883.0\nerrors_created{route=\"/orders\",service=\"orders\"} 1.7880144744209623e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/orders\",service=\"orders\"} 70.0\nlatency_ms_bucket{le=\"10.0\",route=\"/orders\",service=\"orders\"} 71.0\nlatency_ms_bucket{le=\"25.0\",route=\"/orders\",service=\"orders\"} 71.0\nlatency_ms_bucket{le=\"50.0\",route=\"/orders\",service=\"orders\"} 432.0\nlatency_ms_bucket{le=\"100.0\",route=\"/orders\",service=\"orders\"} 3905.0\nlatency_ms_bucket{le=\"250.0\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_bucket{le=\"500.0\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_count{route=\"/orders\",service=\"orders\"} 3908.0\nlatency_ms_sum{route=\"/orders\",service=\"orders\"} 260100.19999999966\nlatency_ms_created{route=\"/orders\",service=\"orders\"} 1.788014171812323e+09\nupstream_requests_total{service=\"orders\",status=\"200\",upstream=\"payments\",version=\"v1\"} 2954.0\nupstream_requests_total{service=\"orders\",status=\"503\",upstream=\"payments\",version=\"v1\"} 883.0\nupstream_requests_created{service=\"orders\",status=\"200\",upstream=\"payments\",version=\"v1\"} 1.7880141718116646e+09\nupstream_requests_created{service=\"orders\",status=\"503\",upstream=\"payments\",version=\"v1\"} 1.7880144744204597e+09\n",
+      "type": "tool.response",
+      "id": "01m16zj5gcsg9qgkkdzkfnx9az",
+      "created_at": "2026-08-29T14:42:44.874Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_940011",
+      "content": "# http://127.0.0.1:8082/metrics (fetched unix 1788014564)\npython_gc_objects_collected_total{generation=\"0\"} 315356.0\npython_gc_objects_collected_total{generation=\"1\"} 41333.0\npython_gc_objects_collected_total{generation=\"2\"} 2334.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 648.0\npython_gc_collections_total{generation=\"1\"} 58.0\npython_gc_collections_total{generation=\"2\"} 2.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.39259904e+08\nprocess_resident_memory_bytes 5.332992e+07\nprocess_start_time_seconds 1.78801415031e+09\nprocess_cpu_seconds_total 24.099999999999998\nprocess_open_fds 15.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/charge\",service=\"payments\",status=\"200\"} 2954.0\nrequests_total{route=\"/charge\",service=\"payments\",status=\"503\"} 883.0\nrequests_created{route=\"/charge\",service=\"payments\",status=\"200\"} 1.7880141718090448e+09\nrequests_created{route=\"/charge\",service=\"payments\",status=\"503\"} 1.788014474418123e+09\nerrors_total{route=\"/charge\",service=\"payments\"} 883.0\nerrors_created{route=\"/charge\",service=\"payments\"} 1.788014474418195e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/charge\",service=\"payments\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/charge\",service=\"payments\"} 0.0\nlatency_ms_bucket{le=\"25.0\",route=\"/charge\",service=\"payments\"} 119.0\nlatency_ms_bucket{le=\"50.0\",route=\"/charge\",service=\"payments\"} 2495.0\nlatency_ms_bucket{le=\"100.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"250.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"500.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_count{route=\"/charge\",service=\"payments\"} 3837.0\nlatency_ms_sum{route=\"/charge\",service=\"payments\"} 168825.70000000062\nlatency_ms_created{route=\"/charge\",service=\"payments\"} 1.788014171809111e+09\n",
+      "type": "tool.response",
+      "id": "01m16zj5gcsg9qgkkdzkfnx9b0",
+      "created_at": "2026-08-29T14:42:44.875Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1540729",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"lines\":50,\"instance\":\"payments-v1\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Eu8JCuwJARFNMg+pVBWH9bv3MX394Voj2vFgAyfp+wd89CLvvKpY9fSDxRIOpkMhdqHPQ6foMbkJjAsoDFzu8RdnY8Rpv2lIeVX6VUZyKuUz0rbHzKsvVQEx3qhvfC7EhNhXLtywIY+CEwIMTQC9eTVZJm4kmEEHsKDLVmeKYwV05qMWKKAC69TmqHsqguFVo6GOKLpmKMRw8eqjGuTz1NRYjBej3SZh6GHuS9kyuEBFJqP1E6ZlshIh+FfbDFTQtLqb3cOrxEt90ax7ls4IHVaOQCc9c86TS6XMXdzqCR5NSg9G++TcG+2CggX2HdYPyvmXJURbORR/+t7bjtk/pdQv3jO2Yo+sz9qpkDgUAE92uVt100i0/boeT/VU4DYZlxlO2Xi87ZHTEApAnqw3ZZ72bunllbhH4okOAlMlRlonb39MAdXib533wrxVMHJb6JQwhOg+J3LRW+sArdkW/xGC8jnUYfj897Mhroy3LKBsXVH6BFsDwrzOyLkqZG5k2MCeR50/LqyyjWQ6oXaCpD1FOW7WaRjL41WP/+OjAcBzbMkdFynokR86nqzKJpt0gxyXJw7RsT5LOhZ6GFWCU9KYUyKtZvmAAulpxpR9vjQGHSKt7Dz94LP6fvFyDgwzH7E9OWLwZSqzgpNvniw5cGR2MJzSbAQIbSHErgMJM1pw9vN5lPpJhAw88U/vKiGnQ2UpceTFiDnOvWakzq8M7UTHO8kIztO1kKh4nAE0AGF1FFVfLkabX5Bhsy7YK5Sw6XQGQdMMAbKsd8xCCvXHhExUuR1Q5isEnK3rmbzy3StTRWhlsmMAedUeS2tqUnk/h835oifszpNMDhTaEa4mCi35W3yqr5PL47TsfkUmA4hwkP1Vt5LXdIBQjCRmj6dSMTFsiZznVFmeAr/7FhlFpkaZK4v7MPTGaKI8cZlqmzOSxFX2/B1XVWwlCL24Igcms8YtG6e3Cem2aB/RcI1eCu3a04ERu4IFS8b+zfq6hiRlDcenc6pdU17yrL8d2IwtBWq9WLjeTEZP4lnUpaePb0KjH2DVAEmKmIPGf3zQnwnlIAeuyLK97ziaj0TaGFG1B30VuquIfDDIK/xmf4fF/jkkenO8UBWSKWWsQJQAZuEDag4sNoYlXwGZjWJS8aznJpioUwiUEXJLqWOAieeENaArSsZyY/ijzf4XbevXYnosLcu/Jhk6JpNPUlxDp7oszOWaBmsZiiODHB/6mZbhP8IUlUA5zFPPvMM/WVLuE36mag2k4PWc1CiddEoQ9iATYKvWGDb6WhTFAIANFNlib0kCBkVqNoz4jGUKKj7K6qpCB2Wdsbnbm4VcxpkSgXu/4qgYbHG/ALkstQYTw/DNHjQXekRew9EjCE9gCdgw7XC2f09gXFtMLmT2nCPm1dH3cSr60k9QY6l+MixQ8PXIDYHRmtnAQ27ZiC20eN9GUGRmQ6htr7PlZFROilrH2qjGmyikkcoupeVSwJ7rxv5nR7pWBSbS7mjY4NCN82FAoV7mgBvI7xFumz+OeptC3ykksTzfCrPBecQ916RsN1ap+SpTyY9PZJvOZXp5dMYGSxrTHmlWkrjNl5WBI/K6MmYYQVI4SGEEnuaigEcwreDbDB8jSDuzjDDkg0IzU5oEE0+vxeIPanNRC6m+yxixtR2qBmlXLZbiFOz0MIiByn2LjQXp"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zj5gjjfxgdjwvn65h397p",
+      "created_at": "2026-08-29T14:42:47.714Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 10789,
+        "output_tokens": 398,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 5221
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1540729",
+      "content": "# 50 of 4884 lines from data/logs/payments-v1.jsonl (most recent 50)\n{\"ts\":\"2026-08-29T14:42:45.330Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"bde7be1c-d423-4142-871f-681d461d937d\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":48.7}\n{\"ts\":\"2026-08-29T14:42:45.432Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b84cb517-179d-47a0-b7f8-1dd502720cd1\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.433Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b84cb517-179d-47a0-b7f8-1dd502720cd1\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":57.7}\n{\"ts\":\"2026-08-29T14:42:45.528Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d892f59b-a474-451c-981a-b0fb6b542dc8\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.530Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"d892f59b-a474-451c-981a-b0fb6b542dc8\",\"msg\":\"redis memory pressure: used_memory 68843808 maxmemory 67108864 policy noeviction\",\"upstream\":\"redis\"}\n{\"ts\":\"2026-08-29T14:42:45.530Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d892f59b-a474-451c-981a-b0fb6b542dc8\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":58.1}\n{\"ts\":\"2026-08-29T14:42:45.607Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c3b73478-1566-4849-8d05-3204f961ff62\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.608Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c3b73478-1566-4849-8d05-3204f961ff62\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":30.6}\n{\"ts\":\"2026-08-29T14:42:45.699Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4c05d9d1-c88e-4acb-9ca9-42730df4b8cb\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.699Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4c05d9d1-c88e-4acb-9ca9-42730df4b8cb\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":40.9}\n{\"ts\":\"2026-08-29T14:42:45.810Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d98a2775-3865-4b28-959c-37aed545afe1\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.810Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d98a2775-3865-4b28-959c-37aed545afe1\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":56.8}\n{\"ts\":\"2026-08-29T14:42:45.907Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"f370c1b9-0004-44cd-98ae-63f58b0d5773\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.908Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"f370c1b9-0004-44cd-98ae-63f58b0d5773\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":64.2}\n{\"ts\":\"2026-08-29T14:42:45.974Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5a039041-1c86-4338-a0b9-9046a63b6c9f\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:45.975Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5a039041-1c86-4338-a0b9-9046a63b6c9f\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":27.6}\n{\"ts\":\"2026-08-29T14:42:46.099Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0ec41539-75aa-467e-9ebc-795cd8ecdd55\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.100Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0ec41539-75aa-467e-9ebc-795cd8ecdd55\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":64.0}\n{\"ts\":\"2026-08-29T14:42:46.162Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"33e63ad2-acbb-4d82-ae45-16dd9bd91aed\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.162Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"33e63ad2-acbb-4d82-ae45-16dd9bd91aed\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":30.7}\n{\"ts\":\"2026-08-29T14:42:46.249Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6b91a4b6-9daa-4003-8569-c3a77610468f\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.250Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6b91a4b6-9daa-4003-8569-c3a77610468f\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":44.8}\n{\"ts\":\"2026-08-29T14:42:46.386Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b64f7030-4f9b-412b-845f-1ba68a829f6d\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.387Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b64f7030-4f9b-412b-845f-1ba68a829f6d\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":52.9}\n{\"ts\":\"2026-08-29T14:42:46.472Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6e493e7c-afc2-48dc-89b3-4014644702b9\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:42:46.473Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6e493e7c-afc2-48dc-89b3-4014644702b9\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.473Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6e493e7c-afc2-48dc-89b3-4014644702b9\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":50.3}\n{\"ts\":\"2026-08-29T14:42:46.584Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"70b5d4ee-b689-4ac0-91e3-af4209273852\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.585Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"70b5d4ee-b689-4ac0-91e3-af4209273852\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":31.9}\n{\"ts\":\"2026-08-29T14:42:46.694Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"167d4184-a86a-458f-ba11-169426c1549a\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.694Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"167d4184-a86a-458f-ba11-169426c1549a\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":53.4}\n{\"ts\":\"2026-08-29T14:42:46.833Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4eff7434-67dc-4c1d-950f-4b19c0994713\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.834Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4eff7434-67dc-4c1d-950f-4b19c0994713\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":55.2}\n{\"ts\":\"2026-08-29T14:42:46.893Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"474f606b-9161-4089-8e51-dca653782b7c\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:46.893Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"474f606b-9161-4089-8e51-dca653782b7c\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":34.7}\n{\"ts\":\"2026-08-29T14:42:47.019Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"15f68117-89e7-4823-bbbf-9df8781c695a\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.020Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"15f68117-89e7-4823-bbbf-9df8781c695a\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":42.7}\n{\"ts\":\"2026-08-29T14:42:47.131Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cda6fa31-9488-445b-8ea1-51636196cc53\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.132Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cda6fa31-9488-445b-8ea1-51636196cc53\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":36.4}\n{\"ts\":\"2026-08-29T14:42:47.198Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ce2f59aa-aeae-4eec-98dc-a3aec51de45f\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.199Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ce2f59aa-aeae-4eec-98dc-a3aec51de45f\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":27.7}\n{\"ts\":\"2026-08-29T14:42:47.342Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b40cf9cb-dd89-49d5-bfe9-966617d6ef7d\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.343Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b40cf9cb-dd89-49d5-bfe9-966617d6ef7d\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":65.0}\n{\"ts\":\"2026-08-29T14:42:47.441Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a3f74a0e-0ccb-429d-ad9b-a813f50c0361\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:42:47.442Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a3f74a0e-0ccb-429d-ad9b-a813f50c0361\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.442Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a3f74a0e-0ccb-429d-ad9b-a813f50c0361\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":25.4}\n{\"ts\":\"2026-08-29T14:42:47.580Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"63846a1f-b8f6-4991-9eff-8c706d385708\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.581Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"63846a1f-b8f6-4991-9eff-8c706d385708\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":45.2}\n{\"ts\":\"2026-08-29T14:42:47.666Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"8e9f69f8-0cd6-4356-b802-9a36dd8ce3ff\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:42:47.666Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"8e9f69f8-0cd6-4356-b802-9a36dd8ce3ff\",\"msg\":\"request failed\",\"route\":\"/charge\",\"status\":503,\"latency_ms\":39.0}\n",
+      "type": "tool.response",
+      "id": "01m16zj89b9kh22mhfbhx2p9gg",
+      "created_at": "2026-08-29T14:42:47.723Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1308622",
+          "type": "function",
+          "function": {
+            "name": "grep_logs",
+            "arguments": "{\"pattern\":\"maxmemory|OutOfMemoryError|redis\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EscFCsQFARFNMg/kNPn/UVp5u8v0LIoxAXMMeH5RtOrRXjq2krjWJoyYMifgrNq8W7EpWvZczlyDPZi31DCZmsdNpg04IW5AMMVsVVtscZfexLA1oGQQ2jRQUbbE/XBHyV6Gl4DCeJA6t1huWksMV9gMRXW00r61fssU/U1M05rZ6GPUNegL5yXdEU6p33Gsq1x2ax3yKLHEb3X2a9/bQeTmdrOkMJZpN2HpWTkS2HSV9ASctcdsUpI6c870je7WBbBQFU080TJg5FiV9K/jwJzC7bsOwRjqOPVnM0H4bcFs5yqfFG46WhFp3eHS0xwhcL+2NW/4a+vJQUw1moJXgeag/E7W8PxFxiPpHLrm59p559dEUpYZzvCgkpc7RbP2iD9P802OVF01Ij5A9drNvAArUuIMmg8Tatd4fJ+1QXmfonzSpjVbzMq/HqBHms1vbOkMq0/t9SdWO5k6BiBGE9+Av/3JzXBRz9c9Ot/eZJB2waSVJRcmzFWWQb2NqrrE9vDImEOOo8BhDaPHOKGNIIWTmIDFx5GVTFVAmG+XJedxdHUdmG8wHMHojQhWsMSz7wwOOJjQCcfqJ1aHEimXw6Sz23n4ruqN5San/9q5ogEo32EJya4YjuromOXocG/puwR6sHV1Up5q7O7PRgw/VqJU40I5sjZjiZcvIWgmsujBIZ3HTbR35E/Gk6OI1S3Tm7PbqrFb42HB8wG0yXyQH0tYsh0aB1taQBmqa9tla1tU5aR3e4V7SXASKQEAHnJaS9F5f+zWNDiDGcYaV1byvZ/DLiMEpSITIV6apOIsMfgKsAMOwg4EBft6DCvljRUZGsNBYG03zl+8pkTdy1JBC+y0vd/5N4muu8aXKyH85E59Zi/a3aZjGtQpiQPDhup0HFnmt5gbWOnlDJ/dzFgv1Gsi0niPS+Zr6OJMLtB3efGqwbSoxvrnlReh"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "grep_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zj89fmm0wf30a4ryz2nz1",
+      "created_at": "2026-08-29T14:42:50.174Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 16944,
+        "output_tokens": 159,
+        "cache_read_tokens": 8110,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 11376
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1308622",
+      "content": "# 100 of 1039 matching lines across 5 file(s) -- TRUNCATED; narrow the window or raise limit\n{\"ts\":\"2026-08-29T14:36:17.030Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0a8381be-c85a-4a46-90e0-f4a0fbdd3933\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:36:25.529Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9d642932-0066-453d-ade2-99a14a90cd0c\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:36:29.467Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19a692c9-0d70-4ea4-bb9b-2d45a35055e4\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:36:32.107Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6ae66582-b852-43cd-9442-b5e695831d58\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:36:48.243Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c8b648e0-12a8-40c5-9bab-7f4a8cd74c27\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:36:48.341Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e22649ee-38a0-4ffe-9972-78c51789be63\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:03.198Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"740a5bed-5323-4aff-a1e5-38a1dc5cd673\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:05.566Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"18ecde2b-0a80-4167-b4b3-f20eaed0fb57\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:13.831Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5601f6a5-34b6-485d-acd4-180ab0dc75fb\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:14.064Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"563b04fa-9784-413d-9840-764294047909\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:27.256Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"3446c0f0-619e-47ff-baec-8f42641118ec\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:27.484Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a8d99292-4a85-4443-bba8-78d934b55b86\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:32.840Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"488c6ea4-99f9-4338-a5bd-ab1474ae4b96\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:33.098Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec5412b4-0d74-4c38-bc58-82ecb34de663\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:43.274Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"da095b0c-4a37-4da3-aaef-0d3e085acd62\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:47.984Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"7d05955b-0d9e-4328-9f99-7c8097d38ab9\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:51.111Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c82585fa-c60b-446e-86bf-1fb70e2bd8c9\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:52.790Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"46b1654a-c967-42fb-8417-0ebd420cbe74\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:37:58.682Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4630419c-40c7-4862-b44a-ad77b20c3a3f\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:01.683Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"755afc3d-91ae-457c-8607-f228d20b58cf\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:04.608Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"457f4a84-1133-4ed4-81e6-0c4c545b19ba\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:09.115Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"205525c6-4bb3-4035-b673-33e08ceb424f\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:11.952Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b1757e7d-f545-452a-93b8-ec305b693697\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:15.012Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"49adb07b-874f-4c5c-9a06-64b93eeb2f03\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:15.814Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"64907a63-36a8-453d-8e90-ee87a4dd2fe1\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:20.850Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ee1cb89a-74f9-45ca-8341-fd0e244f802b\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:25.869Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"24fefbbe-5f7a-4026-b499-a7839b471e77\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:27.935Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c37de35e-6ef3-469b-bccd-e71ec22c9037\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:50.709Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cfd6bb31-0fcc-4520-ac2d-e0bd8a02711e\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:38:57.039Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b4c0c39a-4a71-49c6-b4f8-96947c959cad\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:14.201Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d355652e-5ec7-48f6-b92d-933da10ff3db\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:22.299Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"45876487-9555-46a4-845b-44d9bafd2834\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:23.953Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5468edcc-4256-4c8d-b1bd-d56a5e8fb079\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:28.159Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"75eff2a9-06fe-4650-9a0c-00487108f569\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:29.910Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"718fda3f-c853-46db-8754-c20a902df7cf\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:30.808Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"39dd843f-088c-436b-a5c0-13c2aed5d608\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:31.361Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6699aac3-b8f8-492a-bb6c-28c55f541a0d\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:33.191Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"03c50ab3-02a4-4d6e-9a9e-fefcf07c0e77\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:35.548Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c4fb9e5f-e231-4899-b73d-102c52a6d515\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:56.492Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19aca52d-c27b-4491-8de0-81faf8d4b975\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:39:58.111Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c61c79b4-75b7-4c75-8d21-9a3c44f455a3\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:01.320Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"f263ba35-d743-44cd-ae3e-0c988e35490d\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:02.937Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"53c00a59-6c07-4379-9907-f268968b42cc\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:05.737Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ff741b09-dcf8-4347-9405-7d22fe568d34\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:06.621Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"8c8e3021-0662-4e64-8bdf-f0e061539a40\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:34.262Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cc5322e3-d3c5-445d-bf84-ca5232b88480\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:39.499Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b4178bd9-92e0-4229-9b4b-41ec713dd54e\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:40.221Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ece64222-fdb4-45e7-9407-983fb388181a\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:44.211Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a2ce5775-71ef-4947-a5de-315874be52b3\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:44.454Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"1e23be53-788c-4b36-97cf-6e6dc25d0c74\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:47.980Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"8a9e057a-bc3f-4ed3-bdb1-e27252fb8682\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:49.551Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9ebf2385-2c11-4e6e-acb1-5b9bfd60bb05\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:50.267Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9cbe051d-9696-4a9b-85da-d18f466886d1\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:57.983Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0e2bbb42-dfef-4149-893e-1531a87a90a7\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:58.102Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e8298ac0-eb31-4783-aed7-009668090364\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:40:58.466Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5a8df167-f81c-4aa5-b2ba-dc88b2000682\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:41:01.493Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d315d93d-78b6-4612-b7ab-81ef3abbc7cc\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:41:13.947Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"bf013ce6-535b-4706-84ee-0dc8be8445f6\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:41:14.416Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:14.417Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"redis memory pressure: used_memory 69052400 maxmemory 67108864 policy noeviction\",\"upstream\":\"redis\"}\n{\"ts\":\"2026-08-29T14:41:14.523Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"20c61af6-4ace-46d9-85a1-3ea1011efe1e\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:14.665Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0e330d81-e897-41c6-8ec8-8e0d205630f7\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:14.817Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d31602a3-c1a9-44bd-b186-ec575be1e450\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:14.889Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2824f71e-8929-45f6-95ab-577ddba748a7\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:14.970Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19351b6c-f4e9-4572-9e3a-0eeb5ae3a07a\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.066Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e7bf5cb0-5627-46ad-944a-c376b94c19d0\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.201Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"43057119-4da7-4051-984f-b1fe540e6774\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.303Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"53497e83-d866-45fb-b686-fd53e280a0a8\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.417Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d9c5c0c4-eeca-4105-b191-0fd106d9e2ee\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.501Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"13eae5c2-82c2-4462-8220-2dad5527fa54\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.612Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"7f24a43a-a0a9-4004-b3b7-f9b5d61bf839\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.708Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"49d8632a-d9fd-49b4-a5fc-8b3f728752ed\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.843Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5d3b6e50-e488-4756-94b8-1613dfc9550d\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:15.933Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6fb66552-1b03-4ab9-a482-2f7ad86f88b6\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.047Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6d1bd92-57f0-4393-b893-4037960c2e54\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:41:16.048Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6d1bd92-57f0-4393-b893-4037960c2e54\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.103Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c69b5d9e-e948-442a-a7a5-3571c840c79b\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.251Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a0ab61c0-b184-4dd3-9cf9-159bf2ccad21\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.340Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4a2fae54-ca51-4a1f-bd9b-dea58e4154cc\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.422Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a8747773-ed83-4ef6-b857-b817cb59575c\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.513Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cdb454d7-fd0f-457b-8d30-8f3101fdc597\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.626Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"289ef665-c415-4ec4-9230-fce98f24cf47\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.768Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"3e190e81-f72c-4fc1-ae80-95819db646d9\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.848Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0641f2bb-ade1-466b-a56f-50b459aaae04\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:16.923Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2969539f-0b30-4c1b-ac57-979734614571\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.051Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"96622c87-7ff1-4433-be34-d7056ef5357b\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.143Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"10129b4b-f3ba-4076-be89-53c7a7a66e73\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.242Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"45e14de1-e1c8-4c3e-bf6b-4fd73f9b754c\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.317Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6f59da81-679e-416b-8413-a659be2beed6\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.462Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c3d5fa8c-af29-4dfb-8439-131b31b222dd\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.563Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"79706932-8cb6-4b6a-b16c-278daedf999e\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.633Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"624f4792-41da-4bdc-b32a-d9a1eea8dac7\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.700Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a751f7d9-4f9a-436c-a743-9b986fe9dfc5\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.802Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ce21d713-90ba-4806-b051-715a8e36839c\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:17.909Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"89ab96bb-fc81-42e8-a94a-2ef61f2a09b9\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:18.041Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"8f6847be-623a-4b33-842b-8f7622eb4477\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:18.126Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"b65932c8-acec-4824-a305-b9c7fb331963\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:18.247Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"43f780d6-eda1-49db-8d2c-55f13e9e998c\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:18.336Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d35f6ad7-5f30-47b8-bb1c-1fb4ca72280e\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n{\"ts\":\"2026-08-29T14:41:18.446Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"42d9f538-6ca2-443d-a6d3-18127a9e453a\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n",
+      "type": "tool.response",
+      "id": "01m16zjapskxxkdzg4reshjnw2",
+      "created_at": "2026-08-29T14:42:50.201Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1636404",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"instance\":\"payments-v2\",\"lines\":20}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EsQOCsEOARFNMg/nFl2GHjcXT7rpGRe9OTczGTWEPhptNdbK0x0PKDaS7CWVvfIF/IfaxdrTylmHuL5rX77EDE8SVIxhu8w0LY/DT9+9e5xykokgWbLHjnKTYrVGz6NRI+urjFPM6r26QqpwGIgHASiuht7TGcqboEKLUmFRqq2buFLueGhjSlby4NHOvCgTpOz+/ODudtA+0WyqPE+My/oibAqC7Me9+sMa+MZ0ZvvDr7Ai6X3Prac3vei4ucObQjRWwo3o7hxtO4yO0JF13O4x21SYTUIpSmj08vMVaXUYF1jjtBf47sQm2bePzJasHAI4zMkN1CKCdItQQnjnXwqAxjdCflJLvanyf8/RCInUESlTONG4v5yFumjcecp96Qws9PRDbxvg8q6y0avQcAoeDAunaJnA67yLymU4G1AnQYm0gfVF9Bpgt7oaYC9xTjNZpHChJwnV9gvAD3sguitNke9ByziKZfAR/N0KPdYus5U8seoZ8sLRWmdcmCsfZA+y5Ccu6+edkmUU/jGSoatCttYnuU/e1RxFp763/Csvv97vBxmuDRsvbbfWgi77ryaj9yMp0NO6YPKH7G9jtQ3unyq0nfBAZsc65FKuPYkj99NGo9RtC7nDnRUohGRLpiSRhEOW4sYZFoZP8CQCMWR+wZRkR0/Od+8IfboV/+Qs3dtQUk0zdMkSyXsC6cAfY6W/TGsUdAgWEiEs12dq7Cyqcb4hiri9/j5bvAt7xSbd/LKCL9ee+X3JMXzQV1Znr9xKhmYXi7IgjN8wnF4aMKjHm1Fws66yDlZP1vYGoMMrDxMleVyUiUZhrdE89c16Vg7FiXeyJo2Vpzgk2DI7fFr+MdVFU3led7Qo2sfAUt4E8BzwlOozS3d+h5XZF3G1w5OV6ONYPwbgQD5eDbLiCmzuVdYoV9YMQOGPLC9yg9RIa4s7W9RDECJnb5Ix/TBhQlzvsvT1n6EnEIj70iNZoIWO+NX1gF43/t3v2WJAnV7dVFChAvy/be7CcyaF6ob579z3s5G+9JArNWbhppPOgRyixmCqKR4cdMyhkRgd9InTrTwVB99bqHqh0JLFbpg7iVwlwFvy4j+gNxAch38uHDhnTiFqR3cPHhu2S/kbPoRLeE9iohowUoLPtqYSYC52dPbFYQdA9vP+etkRzkNTVgBFibhKl0EqyDKHE3p02IJX8Fh3rK6E1xKNEz6R/Zp8Ghiow9z+K2ALcP4508woy7oT+lCBN5nxkPuKj8xaqcjF1teZlXmIKu5ndCxpzoYnhfinOiR/dLHlAdp9Jazr5Yl/RiEFYUOj+KLOA6JN2+3Mje90wWuzqait9lSnkSlWeiWG7/vlL7AFpT+zb2zC3Gwqkx97FPUUMHl+BCPqrPpLDr8e2hBxGRGhxiiG83hwxLc0pyNLC0bAe8quY/xVVfUzrv1CV5bnQ+k61MAZMyw5sHtbotiYP1jGU95v6+WdUPElSV9tgVJpMM+Q0oQzaNmbFLIaL6ttSzAO3wuyYNw8Uf/B7hJ6MCMH3qkxXaRnGCZMBw84u2gPQj29D4QtPOWaCOlnuGOVw0AxDR9+hszntOVa7D10OH6+gQqbkCuq1tJeD5ZpHVnLuV2dJ3e6M4HTpECY+Ayfqt61RQSsfGmO3krn7MKmhNEhNdHF2aVW2a6DLn52rikyUNcffc4xdnyGtu05zRPR+ThC8x78W/Q9o7pFmLSMOho/jZL/OYp/ZINFTRZfSoJe5RE3Koiy1n5nMSDEuFzE05B3Qi240g3Z5SoHd7znbFa2oRwhuQjJGj49lhbPYbpWGUPMRdoX2MT/HSqcqbGNn+TVvYnVnS3qGi+4EfXibOVBGKfO2q5Llg2eSvEXjsxb7uV99kGojMF3LjVgYJJg86c3n5d65mmW+ADhid8Jvw3d23npHb87bhfXxpGN76hR6Ha4iy+4yJRqxByLFYyGzMEZztWFWq8RyZcbG2JkdQVOG6TpdSGBPILXoZ4qHWuvCjscqEJkYSNqA7CynfIv08CAgV9TrrtCRh6nFojgwxNDnrSoWAiWcagk+LM5gRRQ3YKyNRidl9sKdrBF+q0iiPV4o8vOV7WS/fB0B9KmNbF4KiCuptlEX2YBPY6WAk013gDZRpvXNgLEgdaqGzanGiOWEhKNfTgSpwaOoOKLfdh2UehFp7Pi2s5A40V5p87c4gm1ten2JSNYD0ZfR7i9iSVSrd8I04PAYAHBrSkPr0aMJxZu48TCJZOU8xCcuANGqK2Zmyy4IyC4IIXN0q7Tkfu4BoF3Fq5SQFLmW8RF1JFoO/a28JUhVqpW5d9sHON52uFxBsugs/98irrdPcJGWsf2A+HVcXyX9pVBIj698c2R9g/5dKWBgkTC+wyEg60++5WlvTnoEOUuknaK2IPL7lAT0Um0inQ31nVSRqS/2wX4GTV8+HBg17i+C67AveYzZRnX8idjVpk8Sg3k+XFU0Yuc0hNFSUGvfhqWtuFM"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zjapxs6b0x4ka31j1yh23",
+      "created_at": "2026-08-29T14:42:54.068Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 28462,
+        "output_tokens": 544,
+        "cache_read_tokens": 16280,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 22894
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1636404",
+      "content": "# 6 of 6 lines from data/logs/payments-v2.jsonl (most recent 20)\n{\"ts\":\"2026-08-29T14:35:52.757Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"Started server process [1]\"}\n{\"ts\":\"2026-08-29T14:35:52.758Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"Waiting for application startup.\"}\n{\"ts\":\"2026-08-29T14:35:52.758Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"payments v2: fast-path validator enabled\"}\n{\"ts\":\"2026-08-29T14:35:52.759Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"payments v2 ready\"}\n{\"ts\":\"2026-08-29T14:35:52.759Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"Application startup complete.\"}\n{\"ts\":\"2026-08-29T14:35:52.760Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"-\",\"msg\":\"Uvicorn running on http://0.0.0.0:8082 (Press CTRL+C to quit)\"}\n",
+      "type": "tool.response",
+      "id": "01m16zjeft59zpkjsqzn1hbf7v",
+      "created_at": "2026-08-29T14:42:54.074Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1114003",
+          "type": "function",
+          "function": {
+            "name": "grep_logs",
+            "arguments": "{\"pattern\":\"ERROR|WARNING\",\"instance\":\"orders\",\"since\":\"2026-08-29T14:40:00Z\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Et8CCtwCARFNMg+nyGFhBPGOgsQsF3CAJOCU43B6Dk0n3f7Lf0HvjHRXeFhuH4nhYlzN6RfP2nBRlwlmLK9YFVW8C/JBAeOXQfnBSHSthuiDx3USKD/AEW+ChLqGreZje0TIMfXjCs1dLdaVVxf+oTpz2wyKDecciRsjGnSYCRtCXzUicam5fu/Qu2z0/A47Y2nOHnNNSQYJFkMMxQUVgFlqxjiUKfYQ6a2Kxo0FD1odGdfieiUVhxOQqMMcMe0ox+fQvQUKQhEgzXLzkPWvMLJW0+4uwcBnyMGLl/a61Ht/uYqmUfkeKR/tNPUO0kSySYrUyugr3dCsuehW2yZ/j0jKvgtTuxD17no7vtzLgZ5fDR0PYbe9CVNSPZnPzmiFbpVEPQu1uewE97SMtLYAn5oKiCKqdqIZBHOBN/BJuIjXGBUUL1HKDJdXRhbFGL2OXuVD2ZpIDFo4qxgEjBuBjeFO"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "grep_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zjefxk5xfznkd7cc949dn",
+      "created_at": "2026-08-29T14:42:57.136Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 29457,
+        "output_tokens": 107,
+        "cache_read_tokens": 24417,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 23889
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1114003",
+      "content": "# 100 of 2076 matching lines across 1 file(s) -- TRUNCATED; narrow the window or raise limit\n{\"ts\":\"2026-08-29T14:40:01.568Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"d74c8860-f2fb-42c6-925b-53f506edd6bb\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":140.4}\n{\"ts\":\"2026-08-29T14:40:03.046Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"d07b7724-8a17-400a-948b-525aae6af388\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":129.8}\n{\"ts\":\"2026-08-29T14:40:08.261Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"3ddf5688-0139-4b86-af85-203cf830bea5\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":110.6}\n{\"ts\":\"2026-08-29T14:40:10.163Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"909bfa8d-230c-47f1-9be6-6e9e06e33f44\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":87.4}\n{\"ts\":\"2026-08-29T14:40:14.385Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"b0376816-1814-48f9-8537-277cf1f1d6fb\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":118.3}\n{\"ts\":\"2026-08-29T14:40:19.917Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"966edc31-d725-48e3-8d51-524cd8d4725c\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":126.2}\n{\"ts\":\"2026-08-29T14:40:21.204Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"ca924da8-2c6a-491f-8757-912b8d6b456e\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":133.7}\n{\"ts\":\"2026-08-29T14:40:21.994Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"90383703-cf12-4313-b5a8-70a14276290d\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":90.0}\n{\"ts\":\"2026-08-29T14:40:25.671Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"931a8fd8-450b-4c4f-a56d-bdb2ca634b88\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":118.2}\n{\"ts\":\"2026-08-29T14:40:25.755Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"bfcf939e-1c1e-4a5a-a7f5-e4d5b42176c0\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":133.5}\n{\"ts\":\"2026-08-29T14:40:33.496Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"a5babe26-c2fc-4353-b67b-d794cb3f5768\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":85.9}\n{\"ts\":\"2026-08-29T14:40:33.881Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"3fa33888-a42c-450f-ad10-b3d548bd6976\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":96.1}\n{\"ts\":\"2026-08-29T14:40:34.020Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"f232e871-4484-451d-9cf2-d920cfb988f6\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":153.2}\n{\"ts\":\"2026-08-29T14:40:36.005Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"c4c604cb-0cba-4ea3-b8d1-651188914fbf\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":141.3}\n{\"ts\":\"2026-08-29T14:40:36.676Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"fe17e8f3-9700-4bb0-8bb8-b91d5793f70e\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":122.6}\n{\"ts\":\"2026-08-29T14:40:41.692Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"2dffd3ce-a899-4d62-ba65-ceedbbf2bd45\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":96.4}\n{\"ts\":\"2026-08-29T14:40:43.203Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"53c5dbe2-bb0c-4efb-bb3a-fe699fecb523\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":123.1}\n{\"ts\":\"2026-08-29T14:40:50.911Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"9c191331-b7df-4eb9-9a1b-0257dd4d7474\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":95.5}\n{\"ts\":\"2026-08-29T14:40:51.383Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"5452dd67-475e-4bbe-8b0e-c40b54a5031f\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":133.0}\n{\"ts\":\"2026-08-29T14:40:54.856Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"24391e37-8c03-4a8a-864c-da80bb0bf375\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":89.1}\n{\"ts\":\"2026-08-29T14:40:55.218Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"3c96326a-a7c8-4e03-a930-8a4fccec13a7\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":93.4}\n{\"ts\":\"2026-08-29T14:40:55.872Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"fde02178-0dc8-496e-bd32-c7e66610b404\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":100.8}\n{\"ts\":\"2026-08-29T14:40:56.348Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"db5dc575-c27b-4f57-b01e-5da2f4405068\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":110.7}\n{\"ts\":\"2026-08-29T14:41:00.019Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"004c4600-b79f-4bc5-84be-c5ca1bc13d5e\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":106.0}\n{\"ts\":\"2026-08-29T14:41:00.608Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"991bf365-c5fe-47f7-96fd-ef9e46b383a6\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":120.9}\n{\"ts\":\"2026-08-29T14:41:00.742Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"4ead4349-319e-485a-8a54-e9c1ce7482ca\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":139.7}\n{\"ts\":\"2026-08-29T14:41:03.926Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"d0b6ba75-3ed9-48e3-8600-17c871ef7d6c\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":125.7}\n{\"ts\":\"2026-08-29T14:41:04.379Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"1da49151-2d6b-4a30-afae-e97814c098b8\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":92.9}\n{\"ts\":\"2026-08-29T14:41:14.420Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.421Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":57.6}\n{\"ts\":\"2026-08-29T14:41:14.526Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"20c61af6-4ace-46d9-85a1-3ea1011efe1e\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.527Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"20c61af6-4ace-46d9-85a1-3ea1011efe1e\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":39.2}\n{\"ts\":\"2026-08-29T14:41:14.669Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0e330d81-e897-41c6-8ec8-8e0d205630f7\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.669Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0e330d81-e897-41c6-8ec8-8e0d205630f7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":55.4}\n{\"ts\":\"2026-08-29T14:41:14.821Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d31602a3-c1a9-44bd-b186-ec575be1e450\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.822Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d31602a3-c1a9-44bd-b186-ec575be1e450\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":77.9}\n{\"ts\":\"2026-08-29T14:41:14.892Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2824f71e-8929-45f6-95ab-577ddba748a7\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.893Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2824f71e-8929-45f6-95ab-577ddba748a7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":73.2}\n{\"ts\":\"2026-08-29T14:41:14.973Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19351b6c-f4e9-4572-9e3a-0eeb5ae3a07a\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:14.974Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19351b6c-f4e9-4572-9e3a-0eeb5ae3a07a\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":71.5}\n{\"ts\":\"2026-08-29T14:41:15.070Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e7bf5cb0-5627-46ad-944a-c376b94c19d0\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.070Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e7bf5cb0-5627-46ad-944a-c376b94c19d0\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":69.3}\n{\"ts\":\"2026-08-29T14:41:15.205Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"43057119-4da7-4051-984f-b1fe540e6774\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.205Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"43057119-4da7-4051-984f-b1fe540e6774\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":78.7}\n{\"ts\":\"2026-08-29T14:41:15.307Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"53497e83-d866-45fb-b686-fd53e280a0a8\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.307Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"53497e83-d866-45fb-b686-fd53e280a0a8\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":69.4}\n{\"ts\":\"2026-08-29T14:41:15.421Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d9c5c0c4-eeca-4105-b191-0fd106d9e2ee\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.422Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d9c5c0c4-eeca-4105-b191-0fd106d9e2ee\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":57.9}\n{\"ts\":\"2026-08-29T14:41:15.505Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"13eae5c2-82c2-4462-8220-2dad5527fa54\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.506Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"13eae5c2-82c2-4462-8220-2dad5527fa54\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":49.5}\n{\"ts\":\"2026-08-29T14:41:15.616Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"7f24a43a-a0a9-4004-b3b7-f9b5d61bf839\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.617Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"7f24a43a-a0a9-4004-b3b7-f9b5d61bf839\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":62.1}\n{\"ts\":\"2026-08-29T14:41:15.712Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"49d8632a-d9fd-49b4-a5fc-8b3f728752ed\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.712Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"49d8632a-d9fd-49b4-a5fc-8b3f728752ed\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":73.4}\n{\"ts\":\"2026-08-29T14:41:15.846Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5d3b6e50-e488-4756-94b8-1613dfc9550d\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.846Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5d3b6e50-e488-4756-94b8-1613dfc9550d\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":94.3}\n{\"ts\":\"2026-08-29T14:41:15.892Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"6fb66552-1b03-4ab9-a482-2f7ad86f88b6\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":150.5}\n{\"ts\":\"2026-08-29T14:41:15.937Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6fb66552-1b03-4ab9-a482-2f7ad86f88b6\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:15.938Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6fb66552-1b03-4ab9-a482-2f7ad86f88b6\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":60.1}\n{\"ts\":\"2026-08-29T14:41:16.052Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6d1bd92-57f0-4393-b893-4037960c2e54\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.053Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6d1bd92-57f0-4393-b893-4037960c2e54\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":81.5}\n{\"ts\":\"2026-08-29T14:41:16.107Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c69b5d9e-e948-442a-a7a5-3571c840c79b\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.108Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c69b5d9e-e948-442a-a7a5-3571c840c79b\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":44.1}\n{\"ts\":\"2026-08-29T14:41:16.201Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"a0ab61c0-b184-4dd3-9cf9-159bf2ccad21\",\"msg\":\"postgres insert slower than budget\",\"latency_ms\":95.5}\n{\"ts\":\"2026-08-29T14:41:16.255Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a0ab61c0-b184-4dd3-9cf9-159bf2ccad21\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.256Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a0ab61c0-b184-4dd3-9cf9-159bf2ccad21\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":70.6}\n{\"ts\":\"2026-08-29T14:41:16.344Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4a2fae54-ca51-4a1f-bd9b-dea58e4154cc\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.345Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"4a2fae54-ca51-4a1f-bd9b-dea58e4154cc\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":68.0}\n{\"ts\":\"2026-08-29T14:41:16.426Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a8747773-ed83-4ef6-b857-b817cb59575c\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.426Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a8747773-ed83-4ef6-b857-b817cb59575c\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":67.5}\n{\"ts\":\"2026-08-29T14:41:16.517Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cdb454d7-fd0f-457b-8d30-8f3101fdc597\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.518Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"cdb454d7-fd0f-457b-8d30-8f3101fdc597\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":66.8}\n{\"ts\":\"2026-08-29T14:41:16.630Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"289ef665-c415-4ec4-9230-fce98f24cf47\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.630Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"289ef665-c415-4ec4-9230-fce98f24cf47\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":67.9}\n{\"ts\":\"2026-08-29T14:41:16.771Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"3e190e81-f72c-4fc1-ae80-95819db646d9\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.772Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"3e190e81-f72c-4fc1-ae80-95819db646d9\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":89.7}\n{\"ts\":\"2026-08-29T14:41:16.852Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0641f2bb-ade1-466b-a56f-50b459aaae04\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.853Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0641f2bb-ade1-466b-a56f-50b459aaae04\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":71.5}\n{\"ts\":\"2026-08-29T14:41:16.927Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2969539f-0b30-4c1b-ac57-979734614571\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:16.928Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2969539f-0b30-4c1b-ac57-979734614571\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":52.7}\n{\"ts\":\"2026-08-29T14:41:17.054Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"96622c87-7ff1-4433-be34-d7056ef5357b\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.055Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"96622c87-7ff1-4433-be34-d7056ef5357b\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":54.5}\n{\"ts\":\"2026-08-29T14:41:17.149Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"10129b4b-f3ba-4076-be89-53c7a7a66e73\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.150Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"10129b4b-f3ba-4076-be89-53c7a7a66e73\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":67.6}\n{\"ts\":\"2026-08-29T14:41:17.246Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"45e14de1-e1c8-4c3e-bf6b-4fd73f9b754c\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.246Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"45e14de1-e1c8-4c3e-bf6b-4fd73f9b754c\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":64.9}\n{\"ts\":\"2026-08-29T14:41:17.321Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6f59da81-679e-416b-8413-a659be2beed6\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.321Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6f59da81-679e-416b-8413-a659be2beed6\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":51.3}\n{\"ts\":\"2026-08-29T14:41:17.466Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c3d5fa8c-af29-4dfb-8439-131b31b222dd\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.467Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c3d5fa8c-af29-4dfb-8439-131b31b222dd\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":86.4}\n{\"ts\":\"2026-08-29T14:41:17.567Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"79706932-8cb6-4b6a-b16c-278daedf999e\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.567Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"79706932-8cb6-4b6a-b16c-278daedf999e\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":85.0}\n{\"ts\":\"2026-08-29T14:41:17.637Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"624f4792-41da-4bdc-b32a-d9a1eea8dac7\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.638Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"624f4792-41da-4bdc-b32a-d9a1eea8dac7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":79.8}\n{\"ts\":\"2026-08-29T14:41:17.704Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a751f7d9-4f9a-436c-a743-9b986fe9dfc5\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.705Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a751f7d9-4f9a-436c-a743-9b986fe9dfc5\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":53.4}\n{\"ts\":\"2026-08-29T14:41:17.805Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ce21d713-90ba-4806-b051-715a8e36839c\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.806Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ce21d713-90ba-4806-b051-715a8e36839c\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":81.8}\n{\"ts\":\"2026-08-29T14:41:17.913Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"89ab96bb-fc81-42e8-a94a-2ef61f2a09b9\",\"msg\":\"payments charge failed with HTTP 503\",\"status\":503,\"upstream\":\"payments\",\"upstream_version\":\"v1\"}\n{\"ts\":\"2026-08-29T14:41:17.914Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"89ab96bb-fc81-42e8-a94a-2ef61f2a09b9\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":63.2}\n",
+      "type": "tool.response",
+      "id": "01m16zjhfwx4nqa6z09t3ng7bk",
+      "created_at": "2026-08-29T14:42:57.148Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1370864",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "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"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zjhfy91gzba2zahgxtbvq",
+      "created_at": "2026-08-29T14:43:04.411Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 40421,
+        "output_tokens": 1143,
+        "cache_read_tokens": 24454,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 34853
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1370864",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788014584)\npython_gc_objects_collected_total{generation=\"0\"} 390642.0\npython_gc_objects_collected_total{generation=\"1\"} 58330.0\npython_gc_objects_collected_total{generation=\"2\"} 3567.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 776.0\npython_gc_collections_total{generation=\"1\"} 70.0\npython_gc_collections_total{generation=\"2\"} 3.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3334016e+07\nprocess_start_time_seconds 1.78801416341e+09\nprocess_cpu_seconds_total 40.660000000000004\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 2954.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 73.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1080.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.7880141718154325e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.7880141807367737e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880144744235067e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 1080.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880144744235616e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 47.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 73.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 122.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 3982.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 4107.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 306923.50000000093\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788014171815491e+09\n",
+      "type": "tool.response",
+      "id": "01m16zjrk9yd7zj7383m9yhgfs",
+      "created_at": "2026-08-29T14:43:04.425Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1257732",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EsoBCscBARFNMg9vR9+S/BOnRrfULphKiCTUSgyVIkfZ1JNShGWcvJRBiYiDrv8maJoBeAvbkZ2r0vUWKRVDdB75/Ohx+A3x9/JwVACF2BS7dzIJ+k4+EmQorbZIOg0e9cJZtuVdBD8Uv99dwwsJfiMcUO9E38p30TKXxlDXxQkZJrwrljIylmd3Bw6fqfAh/XlAdYQfZIHUWYMKAMBTMcCB3VGZET4jFYXlhxpSWl/I8FuvOSje0pbnEFsqXJgDa1n843byXbWOBPZAUA=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16zjrkdxy03pyw7tbehfh73",
+      "created_at": "2026-08-29T14:43:06.865Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 42634,
+        "output_tokens": 34,
+        "cache_read_tokens": 32606,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 37066
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1257732",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788014586)\npython_gc_objects_collected_total{generation=\"0\"} 393256.0\npython_gc_objects_collected_total{generation=\"1\"} 58330.0\npython_gc_objects_collected_total{generation=\"2\"} 3567.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 780.0\npython_gc_collections_total{generation=\"1\"} 70.0\npython_gc_collections_total{generation=\"2\"} 3.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3334016e+07\nprocess_start_time_seconds 1.78801416341e+09\nprocess_cpu_seconds_total 40.9\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 2954.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 75.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1102.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.7880141718154325e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.7880141807367737e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880144744235067e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 1102.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880144744235616e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 48.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 75.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 124.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 4005.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 4131.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 308599.40000000095\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788014171815491e+09\n",
+      "type": "tool.response",
+      "id": "01m16zjtzt92p3b97ecd1k14rf",
+      "created_at": "2026-08-29T14:43:06.874Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "### Investigation Report\n\n#### 1. Symptom Confirmation\n- **Alert**: Gateway `/checkout` HTTP 5xx error rate elevated above the 5% threshold.\n- **Timeline**: Error rate spike began at `2026-08-29T14:41:14Z`.\n- **Evidence (E1)**: Metrics on `gateway` (`http://127.0.0.1:18080/metrics`) show `requests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"}` surged to `1102` total failures, with zero successful 200 responses since `14:41:14Z`.\n\n#### 2. Call-Path & Failure Origin\n- **Upstream Cascade**: \n  - `gateway` returns HTTP 502 Bad Gateway because upstream `orders` returned 502.\n  - **Evidence (E2)**: `orders` logs and metrics (`http://127.0.0.1:8081/metrics`) show `upstream_requests_total{service=\"orders\",status=\"503\",upstream=\"payments\",version=\"v1\"}` because `payments-v1` is returning HTTP 503 Service Unavailable on `/charge`.\n- **Root Failure**:\n  - **Evidence (E3)**: `payments-v1` logs (`data/logs/payments-v1.jsonl`) show `/charge` failing with OutOfMemoryError when writing to Redis:\n    ```json\n    {\"ts\":\"2026-08-29T14:41:14.416Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n    {\"ts\":\"2026-08-29T14:41:14.417Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"redis memory pressure: used_memory 69052400 maxmemory 67108864 policy noeviction\",\"upstream\":\"redis\"}\n    ```\n\n#### 3. Deploy & Change History Check\n- **Evidence (E4)**: Querying `deploy_events` and `current_versions` confirms no deployment or routing change has occurred since initial system setup at `2026-08-29T14:36:13.371Z`:\n  - `gateway`: `v1`\n  - `orders`: `v1`\n  - `payments`: `v1`\n- No recent deployment caused this issue.\n\n#### 4. Root Cause Analysis\nRedis hit its configured `maxmemory` limit of 64MB (`67,108,864` bytes) under the `noeviction` eviction policy (`used_memory` reached `69,052,400` bytes). Because the eviction policy is `noeviction`, Redis rejects write commands from `payments-v1` with an `OutOfMemoryError`. `payments-v1` fails the `/charge` request with HTTP 503 when cache writes fail, escalating up through `orders` and `gateway`.\n\n#### 5. Action Taken & Verification\n- **Action**: `report_only`. Because this incident is caused by infrastructure resource exhaustion (Redis maxmemory) and not a software deployment, rolling back any service would not resolve the issue and is not applicable.\n- **Operator Recommended Remediation**:\n  1. Clear/flush stale cache keys or configure a proper eviction policy in Redis (e.g., `allkeys-lru` or `volatile-lru`).\n  2. Increase Redis `maxmemory` allocation.\n- **Verification**: Consecutive metric reads on `gateway` over a 2-second interval (`1788014584` to `1788014586`) show 22 new requests (`1080` -> `1102`), all returning HTTP 502 Bad Gateway. As no deploy action was executed, 100% error rate remains until Redis cache memory is freed.\n\n```verdict\nculprit_service: redis\nculprit_change: none\ncause: Redis cache reached maxmemory limit under noeviction policy causing payment charge cache writes to fail with OutOfMemoryError.\naction: report_only\nevidence_label: causal\n```",
+      "type": "model.message",
+      "id": "01m16zjtzxv8rwav0nzn1qjpww",
+      "created_at": "2026-08-29T14:43:20.602Z",
+      "thread_id": "main",
+      "finish_reason": "stop",
+      "usage": {
+        "input_tokens": 43724,
+        "output_tokens": 2572,
+        "cache_read_tokens": 40754,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 38156
+        }
+      }
+    },
+    {
+      "type": "turn.done",
+      "id": "01m16zk8cx73y2e7xkw26apjtf",
+      "created_at": "2026-08-29T14:43:20.605Z",
+      "state": {
+        "status": "done",
+        "output": {
+          "content": "### Investigation Report\n\n#### 1. Symptom Confirmation\n- **Alert**: Gateway `/checkout` HTTP 5xx error rate elevated above the 5% threshold.\n- **Timeline**: Error rate spike began at `2026-08-29T14:41:14Z`.\n- **Evidence (E1)**: Metrics on `gateway` (`http://127.0.0.1:18080/metrics`) show `requests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"}` surged to `1102` total failures, with zero successful 200 responses since `14:41:14Z`.\n\n#### 2. Call-Path & Failure Origin\n- **Upstream Cascade**: \n  - `gateway` returns HTTP 502 Bad Gateway because upstream `orders` returned 502.\n  - **Evidence (E2)**: `orders` logs and metrics (`http://127.0.0.1:8081/metrics`) show `upstream_requests_total{service=\"orders\",status=\"503\",upstream=\"payments\",version=\"v1\"}` because `payments-v1` is returning HTTP 503 Service Unavailable on `/charge`.\n- **Root Failure**:\n  - **Evidence (E3)**: `payments-v1` logs (`data/logs/payments-v1.jsonl`) show `/charge` failing with OutOfMemoryError when writing to Redis:\n    ```json\n    {\"ts\":\"2026-08-29T14:41:14.416Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"cache write failed: OutOfMemoryError\",\"upstream\":\"redis\",\"detail\":\"command not allowed when used memory > 'maxmemory'.\"}\n    {\"ts\":\"2026-08-29T14:41:14.417Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"WARNING\",\"req_id\":\"2e148440-cde7-4c07-8f64-1d79d7724ab4\",\"msg\":\"redis memory pressure: used_memory 69052400 maxmemory 67108864 policy noeviction\",\"upstream\":\"redis\"}\n    ```\n\n#### 3. Deploy & Change History Check\n- **Evidence (E4)**: Querying `deploy_events` and `current_versions` confirms no deployment or routing change has occurred since initial system setup at `2026-08-29T14:36:13.371Z`:\n  - `gateway`: `v1`\n  - `orders`: `v1`\n  - `payments`: `v1`\n- No recent deployment caused this issue.\n\n#### 4. Root Cause Analysis\nRedis hit its configured `maxmemory` limit of 64MB (`67,108,864` bytes) under the `noeviction` eviction policy (`used_memory` reached `69,052,400` bytes). Because the eviction policy is `noeviction`, Redis rejects write commands from `payments-v1` with an `OutOfMemoryError`. `payments-v1` fails the `/charge` request with HTTP 503 when cache writes fail, escalating up through `orders` and `gateway`.\n\n#### 5. Action Taken & Verification\n- **Action**: `report_only`. Because this incident is caused by infrastructure resource exhaustion (Redis maxmemory) and not a software deployment, rolling back any service would not resolve the issue and is not applicable.\n- **Operator Recommended Remediation**:\n  1. Clear/flush stale cache keys or configure a proper eviction policy in Redis (e.g., `allkeys-lru` or `volatile-lru`).\n  2. Increase Redis `maxmemory` allocation.\n- **Verification**: Consecutive metric reads on `gateway` over a 2-second interval (`1788014584` to `1788014586`) show 22 new requests (`1080` -> `1102`), all returning HTTP 502 Bad Gateway. As no deploy action was executed, 100% error rate remains until Redis cache memory is freed.\n\n```verdict\nculprit_service: redis\nculprit_change: none\ncause: Redis cache reached maxmemory limit under noeviction policy causing payment charge cache writes to fail with OutOfMemoryError.\naction: report_only\nevidence_label: causal\n```",
+          "type": "model.message",
+          "id": "01m16zjtzxv8rwav0nzn1qjpww",
+          "created_at": "2026-08-29T14:43:20.602Z",
+          "thread_id": "main",
+          "finish_reason": "stop",
+          "usage": {
+            "input_tokens": 43724,
+            "output_tokens": 2572,
+            "cache_read_tokens": 40754,
+            "input_tokens_breakdown": {
+              "harness": 2941,
+              "skills": 0,
+              "instructions": 965,
+              "tool_definitions": 1662,
+              "messages": 38156
+            }
+          }
+        },
+        "required_actions": [],
+        "completed_at": "2026-08-29T14:43:20.605Z",
+        "metrics": {
+          "total_input_tokens": 225203,
+          "total_output_tokens": 5827,
+          "total_tokens": 231030,
+          "total_cache_read_tokens": 146621,
+          "total_reasoning_tokens": 4497
+        }
+      },
+      "thread_id": null
+    }
+  ]
+}

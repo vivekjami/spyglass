@@ -2,7 +2,9 @@
 # Install the Node runtime TrueForge needs, without touching system packages.
 #
 # TrueForge requires Node >= 22.14. This fetches the official tarball, verifies
-# it against the signed SHASUMS256.txt, and unpacks it to ~/.local/node-v22.
+# its sha256 against nodejs.org's SHASUMS256.txt (fetched over HTTPS; the
+# release signature is not checked -- that needs the Node release keys), and
+# unpacks it to ~/.local/node-v22.
 # Nothing global is modified; `source scripts/env.sh` puts it on PATH.
 set -euo pipefail
 
@@ -26,7 +28,12 @@ curl -fsSLO "$BASE/$TARBALL"
 curl -fsSLO "$BASE/SHASUMS256.txt"
 
 echo "verifying checksum ..."
-grep " $TARBALL\$" SHASUMS256.txt | sha256sum -c -
+line="$(grep " $TARBALL\$" SHASUMS256.txt || true)"
+if [ -z "$line" ]; then
+  echo "error: $TARBALL not listed in SHASUMS256.txt for $NODE_VERSION" >&2
+  exit 1
+fi
+echo "$line" | sha256sum -c -
 
 mkdir -p "$(dirname "$PREFIX")"
 tar -xJf "$TARBALL"

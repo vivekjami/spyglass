@@ -1,0 +1,122 @@
+{
+  "scenario": "s1",
+  "condition": "baseline",
+  "agent": "spyglass-baseline",
+  "run_id": "20260829T021502Z",
+  "tag": "phase2-acceptance",
+  "model": "google-gemini/gemini-3-6-flash",
+  "started_at": "2026-08-29T02:15:12.782Z",
+  "finished_at": "2026-08-29T02:15:33.865Z",
+  "alert": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it.",
+  "approval_policy": "allow",
+  "outcome": "harness_error",
+  "metrics": {
+    "wall_time_secs": 1.1,
+    "turns": 1,
+    "tool_calls": 0,
+    "tool_calls_by_name": {},
+    "model_calls": 0,
+    "threads": [],
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cache_read_tokens": 0,
+    "tool_response_bytes": 0,
+    "approvals": [],
+    "rollbacks_executed": [],
+    "journal_entries_added": [],
+    "versions_before": {
+      "gateway": "v1",
+      "orders": "v1.1",
+      "payments": "v2"
+    },
+    "versions_after": {
+      "gateway": "v1",
+      "orders": "v1.1",
+      "payments": "v2"
+    },
+    "error_rate_pre_run": {
+      "window_secs": 10,
+      "requests": 101.0,
+      "errors": 16.0,
+      "rate": 0.15841584158415842
+    },
+    "error_rate_post_run": {
+      "window_secs": 20,
+      "requests": 200.0,
+      "errors": 44.0,
+      "rate": 0.22
+    }
+  },
+  "final_output": "",
+  "turns": [
+    {
+      "turn_id": "01m15mscmr5hcp976esy72p6ef.local",
+      "status": "error",
+      "events": 3,
+      "tool_calls": [],
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": 0,
+        "model_calls": 0,
+        "threads": []
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "turn.created",
+      "id": "01m15mscn924gydsb6s0w7z2dn",
+      "turn_id": "01m15mscmr5hcp976esy72p6ef.local",
+      "previous_turn_id": null,
+      "input": [
+        {
+          "type": "user.message",
+          "content": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it."
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T02:15:12.803Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m15mscpxmr9xr7djkxrqbysp",
+      "created_at": "2026-08-29T02:15:12.861Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "spyglass-deployer",
+          "id": "spyglass-deployer",
+          "session_id": "b8ab517a-e858-483b-9ed5-53e7559e1b23",
+          "transport_type": "streamable-http"
+        },
+        {
+          "name": "spyglass-rawtools",
+          "id": "spyglass-rawtools",
+          "session_id": "f95fc8f7-9e52-4359-876b-9327811a7b1f",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "type": "turn.done",
+      "id": "01m15msd9ctq4g5cgvah494mj6",
+      "created_at": "2026-08-29T02:15:13.452Z",
+      "state": {
+        "status": "error",
+        "message": "Request failed (400): * GenerateContentRequest.tools[0].function_declarations[8].parameters.properties[justification_eids].items: field predicate failed: $type == Type.ARRAY\n* GenerateContentRequest.tools[0].function_declarations[8].parameters.properties[justification_eids].any_of[0].items: missing field.\n",
+        "completed_at": "2026-08-29T02:15:13.452Z",
+        "metrics": {
+          "total_input_tokens": 0,
+          "total_output_tokens": 0,
+          "total_tokens": 0
+        }
+      },
+      "thread_id": null
+    }
+  ]
+}

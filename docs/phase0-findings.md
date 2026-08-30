@@ -134,7 +134,7 @@ one available. `POST /api/v1/settings/mcp-servers` registers one.
 
 ### F3. The Rust ↔ TypeScript MCP seam works ✅ (item 2)
 
-[`crates/phase0-probe`](../crates/phase0-probe) is a throwaway `rmcp` 3.1.4
+`crates/phase0-probe` (a throwaway crate, removed in Phase 3 once the real engine existed — see git history) was an `rmcp` 3.1.4
 streamable-HTTP server exposing `probe_ping` (read-only) and `probe_rollback`
 (simulated mutation). TrueForge registered it and enumerated both tools with the
 `schemars`-derived JSON Schema intact, including per-field descriptions:
@@ -202,6 +202,12 @@ The harness then emits, and accepts, these events:
 `CreateTurnRequest.input` warns: *"Do not mix user messages with approval or
 tool-response items."* Deny carries an optional reason surfaced to the agent —
 useful for the S6 refusal scenario.
+
+*Phase 9 addendum:* the gate has **no timeout of its own** — a pending
+approval is held in an in-memory map (`pendingApprovals`) until answered, and
+the OpenAPI schema has no expiry field on `tool.approval_required`. The
+spec's "an expired approval is never executed" is therefore enforced by the
+deployer's proposal expiry (ADR-011).
 
 **Live test — PASS.** With `require_approval_for_tools: ["probe_rollback"]`:
 
@@ -390,7 +396,9 @@ stack**, and there is no supported knob to change that. Patching the harness
 bundle is not an option: not reproducible on a judge's machine, and exactly the
 "rebuild sponsor infrastructure" anti-pattern the spec rules out.
 
-**Fallbacks, in order of preference — decision needed before Phase 8:**
+**Fallbacks, in order of preference — decision needed before Phase 8.**
+*Decided at Phase 8: (A) built; measured v1 0/20 vs v2 20/20 on S1;
+[ADR-010](adr/ADR-010-sandbox-verification-before-action.md) amended.*
 
 - **(A) Replay as a bounded MCP tool — recommended.** Move the experiment into
   the evidence plane: `replay_exemplar(template_id, versions[], n)` on the

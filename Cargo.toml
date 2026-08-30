@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/phase0-probe", "deployer"]
+members = ["crates/spyglass-core", "crates/spyglass-engine", "crates/spyglass-mcp", "crates/rawtools-mcp", "deployer"]
 
 [workspace.package]
 version = "0.1.0"
@@ -13,10 +13,14 @@ anyhow = "1"
 axum = "0.8"
 chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 rmcp = { version = "3.1.4", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 tracing = "0.1"

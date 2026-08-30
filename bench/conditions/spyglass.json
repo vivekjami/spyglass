@@ -1,0 +1,21 @@
+{
+  "name": "spyglass",
+  "description": "SPYGLASS condition: identical to baseline except the read tools come from the evidence plane (bounded, template-grouped, evidence-id-stamped, digest-checked).",
+  "instructions_file": "agent/sop.md",
+  "model": { "name": "$MODEL_A" },
+  "mcp_servers": [
+    { "name": "spyglass-engine", "enable_tools": ["@all"], "preload": true },
+    { "name": "spyglass-deployer", "enable_tools": ["@all"], "preload": true, "require_approval_for_tools": ["rollback"] }
+  ],
+  "config": {
+    "iteration_limit": 80,
+    "sandbox": { "enabled": true },
+    "ask_user_questions": { "enabled": false },
+    "dynamic_sub_agents": { "enabled": true },
+    "generative_ui": { "enabled": false },
+    "context_management": {
+      "compaction": { "enabled": false },
+      "large_tool_response": { "enabled": false }
+    }
+  }
+}

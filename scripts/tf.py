@@ -92,7 +92,10 @@ def status(t: dict) -> str:
 
 
 def output_text(t: dict) -> str:
-    return ((t.get("state") or {}).get("output") or {}).get("content", "")
+    out = (t.get("state") or {}).get("output")
+    if isinstance(out, str):  # the API may return a bare string (phase0-findings)
+        return out
+    return (out or {}).get("content", "") if isinstance(out, dict) else ""
 
 
 def usage(t: dict) -> dict:

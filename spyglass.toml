@@ -1,0 +1,190 @@
+# Spyglass engine configuration. Bounds are enforced by the engine, never by
+# the prompt (ADR-005). Weights and thresholds for novelty / changepoints /
+# ranking live here (Phases 4-6), never in code.
+
+[paths]
+log_dir     = "data/logs"
+deploy_dir  = "data/deploy"
+segment_dir = "data/segments"
+ledger_dir  = "ledger"
+
+[bounds]
+max_items          = 20     # per response, every tool
+search_limit_max   = 50     # search_logs may ask for up to this many templates
+max_bytes_per_item = 2048   # hard cap on any single item's serialised size
+excerpt_bytes      = 600    # raw log excerpt inside a template hit (data, not instructions)
+
+[windows]
+default_lookback_secs        = 900   # when a tool is called without a window: [watermark-15m, watermark]
+deploy_correlation_secs      = 120   # a deploy within +-this of a changepoint is annotated on it (README C4)
+clock_skew_tolerance_secs    = 2
+
+[ingest]
+poll_ms             = 500
+metrics_scrape_secs = 2
+metrics_ring        = 1800  # samples per series at 2s = 1h
+
+# The target system as the engine sees it. `name` is the instance (log file
+# stem); `service` is the logical service; host ports come from the same env
+# vars Compose uses, so scraping hits what `just up` published.
+[[services]]
+name = "gateway"
+service = "gateway"
+role = "public edge; POST /checkout"
+upstreams = ["orders"]
+port_env = "GATEWAY_PORT"
+default_port = 8080
+has_log = true
+
+[[services]]
+name = "orders"
+service = "orders"
+role = "persists orders; scores each order with the fraudcheck vendor (synchronous); charges via payments (routed per deploy state)"
+upstreams = ["payments", "postgres", "fraudcheck"]
+port_env = "ORDERS_PORT"
+default_port = 8081
+has_log = true
+
+[[services]]
+name = "payments-v1"
+service = "payments"
+version = "v1"                      # always-on version instance (ADR-017): a replay target
+role = "payments service, version v1"
+upstreams = ["redis"]
+port_env = "PAYMENTS_V1_PORT"
+default_port = 8082
+has_log = true
+
+[[services]]
+name = "payments-v2"
+service = "payments"
+version = "v2"
+role = "payments service, version v2"
+upstreams = ["redis"]
+port_env = "PAYMENTS_V2_PORT"
+default_port = 8083
+has_log = true
+
+[[services]]
+name = "loadgen"
+service = "loadgen"
+role = "synthetic traffic generator"
+upstreams = ["gateway"]
+has_log = true
+
+[[services]]
+name = "postgres"
+service = "postgres"
+role = "orders database"
+
+[[services]]
+name = "redis"
+service = "redis"
+role = "payments cache"
+
+# An external dependency the topology knows about and the telemetry does not:
+# no log file, no metrics endpoint, no host port. Every real system has one.
+[[services]]
+name = "fraudcheck"
+service = "fraudcheck"
+role = "external fraud-scoring vendor (third party), called synchronously by orders before each charge; NOT observed: no logs, no metrics"
+
+# Phase 4 -- template mining and novelty (README C3, ADR-006).
+[drain]
+depth                = 3      # root -> token count -> first token -> second token -> leaf
+similarity_threshold = 0.5    # min fraction of positions that must match to merge into a cluster
+max_children         = 100    # per tree node; overflow routes to the <*> branch
+
+[novelty]
+incident_window_secs = 300    # default `window`: the last 5 minutes of ingested data
+baseline_secs        = 900    # default `baseline`: the 15 minutes before the window
+warmup_secs          = 30     # templates first seen within this of the engine's earliest event are pre-existing vocabulary, never "new"
+min_baseline_secs    = 60     # burst scoring needs at least this much REAL baseline history, else it is undetermined (0), not inflated
+burst_log2_scale     = 6.0    # burst score = log2(rate_window / rate_baseline) / scale, so 64x -> 1.0
+severity_boost       = 1.25   # x1.25 when the template's dominant level in the window is ERROR (capped at 1.0)
+min_score            = 0.2    # default `min_score`
+
+# Phase 5 -- changepoints (README C4, ADR-007). Rolling z-score on 10 s
+# aggregates of the request series derived from the logs (error_rate,
+# errors_total, requests_total, latency_ms_mean per service / route / instance).
+# Thresholds were tuned on S1 only, and on ten minutes of its steady state.
+[changepoints]
+bucket_secs              = 10     # aggregate size; `at` is refined to the first anomalous event inside the bucket where that is well defined
+z_threshold              = 4.0    # |z| >= this ...
+consecutive_buckets      = 2      # ... for this many buckets in a row confirms a changepoint (the first bucket is the changepoint)
+baseline_secs            = 900    # rolling baseline for bucket t: [t - baseline_secs, t - guard_secs)
+guard_secs               = 30     # the spec said 120 s; 30 s keeps the baseline clean through confirmation and works on the 90 s fast timeline (ADR-007)
+min_baseline_buckets     = 6      # fewer real baseline buckets than this -> z is undetermined for that bucket, never inflated
+sigma_floor_count        = 1.0    # sigma floors: a flat baseline must not turn the first wobble into z = infinity
+sigma_floor_rate         = 0.01   #   1 percentage point for error_rate (counts also get a Poisson floor, sqrt(mean))
+sigma_floor_latency_frac = 0.05   #   5% of the baseline mean for latency_ms_mean ...
+sigma_floor_latency_ms   = 2.0    #   ... and never below 2 ms
+
+# Phase 6 -- evidence ranking (README C5, ADR-008). A hand-weighted linear
+# model: score = w_n*novelty + w_t*temporal_proximity + w_s*severity
+#             + w_d*deploy_correlation + w_f*freq_shift + w_r*service_relevance.
+# Every factor is in [0, 1]; every ledger entry records the weights used.
+# The spec's v0 weights, kept as-is after Phase 6 (docs/phase6-findings.md
+# says what they do and do not order correctly on S1).
+[ranking]
+w_n = 0.30    # novelty: template new/bursting in the window; a deploy is new by definition; changepoints carry theirs in w_f
+w_t = 0.15    # temporal proximity to the incident onset T0 (earliest error changepoint, else earliest novel ERROR template, else window end)
+w_s = 0.10    # severity: ERROR 1.0, WARN 0.5, INFO 0.0 for templates; error-series changepoints 1.0, latency 0.6, traffic 0.3; deploys 0.5
+w_d = 0.25    # deploy correlation: within +-windows.deploy_correlation_secs of a change event of another kind
+w_f = 0.10    # frequency shift: min(1, log2(ratio) / novelty.burst_log2_scale); "from zero" / first seen = 1.0
+w_r = 0.10    # service relevance: relevance_hop_decay ^ hops from the focus service; 1.0 for everything when no focus is given
+proximity_tau_secs   = 120.0
+relevance_hop_decay  = 0.75
+cascade_secs         = 2.0    # error facts on connected services within this of each other are one cascade: reported once, origin first
+
+# Phase 7 -- evidence bundles (README C6). The one-call investigation
+# starter: ranked, deduped, kind-diverse, byte-bounded.
+[bundle]
+max_bytes            = 8192   # the whole bundle, serialised; items are added in rank order until the budget is spent
+incident_window_secs = 300    # default window: the last 5 minutes of ingested data
+baseline_secs        = 900    # novelty baseline: the 15 minutes before the window
+
+# Phase 8 -- the causal check (README C9, ADR-010). A captured request is
+# replayed N times against each always-on version of the suspected service,
+# straight to the instances' published ports (live routing untouched); the
+# replay's own log lines carry `replay-*` request ids and are dropped at
+# ingest, so the experiment never becomes evidence of itself.
+[replay]
+default_n            = 20     # replays per version when the call does not say (the spec's N)
+max_n                = 50     # hard cap per version
+timeout_ms           = 3000   # per request; a timeout counts as a failure and is reported as one
+body_cap             = 2048   # sanitized body cap, bytes (the gateway already caps at 1 kB)
+separation_min_delta = 0.5    # |p_worst - p_best| >= this -> `separated`; below -> `not_separated`, with a reading that says which way
+
+# Where a captured edge request is replayed for a given service: the body the
+# client sent to /checkout is what orders forwards to /charge, so it can be
+# replayed against payments directly. A service with no route here cannot be
+# replayed, and the exemplar says so.
+[[replay.routes]]
+captured_path = "/checkout"
+service       = "payments"
+path          = "/charge"
+
+# Phase 9 -- post-action verification (README C11). The engine judges
+# recovery; the agent asks `verify_recovery(service, deploy_id)` every
+# `interval_secs` until the engine closes the incident (`checks_required`
+# consecutive clean checks -> a `verified_recovery` ledger entry) or tells
+# it to escalate (timeout, or the rate worsening). The incident is resolved
+# only on the closing path.
+[verify]
+interval_secs          = 15
+checks_required        = 2
+timeout_secs           = 300    # the spec's 5 minutes
+window_secs            = 60     # post-action window per check, ending at the safe watermark, never before the action
+baseline_secs          = 300    # pre-incident baseline: the 5 minutes before the reverted deploy
+incident_lookback_secs = 300    # used only when the journal cannot name the deploy the action reverted
+tolerance_abs          = 0.02   # clean = post rate <= max(baseline * ratio, baseline + abs): 2 points over a clean baseline (S1's pre_fault_max)
+tolerance_ratio        = 1.5
+min_requests           = 20     # fewer request events than this after the action -> "insufficient_data", not a verdict
+
+# Engine-side backstop against runaway agents (README, Safety Model). The
+# lead-level budget is the harness's iteration_limit; this is the floor
+# under it, keyed by investigation (MCP session), never by prompt.
+[limits]
+max_calls_per_investigation = 200
+max_calls_per_minute        = 60

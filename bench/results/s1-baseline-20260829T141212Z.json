@@ -1,0 +1,1195 @@
+{
+  "scenario": "s1",
+  "condition": "baseline",
+  "agent": "spyglass-baseline",
+  "run_id": "20260829T141212Z",
+  "tag": "bench-r1",
+  "benchmark": true,
+  "valid": true,
+  "invalid_reason": null,
+  "model": "google-gemini/gemini-3-6-flash",
+  "started_at": "2026-08-29T14:12:22.127Z",
+  "finished_at": "2026-08-29T14:13:40.666Z",
+  "alert": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it.",
+  "approval_policy": "allow",
+  "ground_truth_version": 2,
+  "scenario_run": {
+    "scenario": "s1-payment-regression",
+    "run_id": "20260829T140928Z",
+    "fast": true,
+    "fault": {
+      "kind": "deploy",
+      "service": "payments",
+      "version": "v2"
+    },
+    "seed": 42,
+    "rate": 10.0,
+    "t_start": "2026-08-29T14:09:28.869Z",
+    "t_benign_deploy": "2026-08-29T14:10:08.886Z",
+    "t_fault": "2026-08-29T14:10:58.907Z",
+    "t_end": "2026-08-29T14:12:08.920Z",
+    "steady_secs": 40,
+    "lead_secs": 50,
+    "post_secs": 70,
+    "benign_deploy": {
+      "n": 2,
+      "kind": "deploy",
+      "deploy_id": "D-1",
+      "service": "orders",
+      "version": "v1.1",
+      "from_version": "v1",
+      "ts": "2026-08-29T14:10:08.881Z",
+      "actor": "ci-bot"
+    },
+    "fault_deploy": {
+      "n": 3,
+      "kind": "deploy",
+      "deploy_id": "D-2",
+      "service": "payments",
+      "version": "v2",
+      "from_version": "v1",
+      "ts": "2026-08-29T14:10:58.903Z",
+      "actor": "deploy-bot"
+    }
+  },
+  "provenance": {
+    "condition_file": "bench/conditions/baseline.json",
+    "condition_sha256": "0eb5e48ef0d7460a",
+    "instructions_file": "agent/baseline-sop.md",
+    "instructions_sha256": "13814a4950e908d7"
+  },
+  "outcome": "completed",
+  "metrics": {
+    "wall_time_secs": 58.5,
+    "turns": 2,
+    "tool_calls": 21,
+    "tool_calls_by_name": {
+      "current_versions": 2,
+      "deploy_events": 1,
+      "exec": 1,
+      "get_current_datetime": 1,
+      "get_metric": 4,
+      "grep_logs": 1,
+      "http_request": 3,
+      "list_services": 1,
+      "propose_rollback": 1,
+      "rollback": 1,
+      "tail_logs": 5
+    },
+    "model_calls": 15,
+    "threads": [
+      "main"
+    ],
+    "input_tokens": 593656,
+    "output_tokens": 4346,
+    "total_tokens": 598002,
+    "cache_read_tokens": 464648,
+    "tool_response_bytes": 135082,
+    "approvals": [
+      {
+        "turn": 1,
+        "proposal": {
+          "name": "rollback",
+          "arguments": "{\"expected_current\":\"v2\",\"to_version\":\"v1\",\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"proposal_id\":\"45788987-f01d-49c9-a8e8-72ad85692767\",\"service\":\"payments\"}"
+        },
+        "decision": "allow",
+        "at": "2026-08-29T14:12:46.312Z"
+      }
+    ],
+    "rollbacks_executed": [
+      {
+        "service": "payments",
+        "to": "v1",
+        "from": "v2",
+        "deploy_id": "D-3",
+        "eids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ]
+      }
+    ],
+    "journal_entries_added": [
+      {
+        "n": 4,
+        "kind": "proposal",
+        "service": "payments",
+        "version": "v1",
+        "from_version": "v2",
+        "ts": "2026-08-29T14:12:42.358Z",
+        "actor": "agent",
+        "request_id": "45788987-f01d-49c9-a8e8-72ad85692767",
+        "justification_eids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ],
+        "note": "proposal recorded; execution requires human approval of rollback(proposal_id)",
+        "expected_current": "v2",
+        "expires_at": "2026-08-29T14:22:42.358Z"
+      },
+      {
+        "n": 5,
+        "kind": "rollback",
+        "deploy_id": "D-3",
+        "service": "payments",
+        "version": "v1",
+        "from_version": "v2",
+        "ts": "2026-08-29T14:12:46.378Z",
+        "actor": "agent",
+        "request_id": "45788987-f01d-49c9-a8e8-72ad85692767",
+        "justification_eids": [
+          "E1",
+          "E2",
+          "E3",
+          "E4"
+        ]
+      }
+    ],
+    "journal_kinds_added": {
+      "proposal": 1,
+      "rollback": 1
+    },
+    "versions_before": {
+      "gateway": "v1",
+      "orders": "v1.1",
+      "payments": "v2"
+    },
+    "versions_after": {
+      "gateway": "v1",
+      "orders": "v1.1",
+      "payments": "v1"
+    },
+    "error_rate_pre_run": {
+      "window_secs": 10,
+      "requests": 98.0,
+      "errors": 25.0,
+      "rate": 0.25510204081632654,
+      "p95_latency_ms_le": 100.0
+    },
+    "error_rate_post_run": {
+      "window_secs": 20,
+      "requests": 200.0,
+      "errors": 0.0,
+      "rate": 0.0,
+      "p95_latency_ms_le": 100.0
+    },
+    "sandbox_exec_commands": [
+      "sleep 5"
+    ]
+  },
+  "final_output": "### RCA & Incident Investigation Report\n\n#### 1. Symptom Confirmation & Overview\nThe alert fired due to elevated 5xx error rates on `gateway` at `/checkout`. \nMetrics gathered via `get_metric` on `gateway` confirmed 187 HTTP 502 Bad Gateway responses on `/checkout` starting around `2026-08-29T14:10:59.660Z` (Unix timestamp `1788012659`).\n\n#### 2. Root Cause Analysis\n- **Evidence E1 (Metrics)**: Prometheus `/metrics` on `gateway` showed 187 HTTP 502 responses for `/checkout`, while `payments-v2` recorded 188 HTTP 500 internal server errors for `/charge`.\n- **Evidence E2 (Deployment Log)**: Journal entry `D-2` showed `payments` was deployed to version `v2` from `v1` at `2026-08-29T14:10:58.903Z` by `deploy-bot`.\n- **Evidence E3 (Error Stack Traces)**: Log entries from `payments-v2` (`grep_logs`) revealed repeated exceptions:\n  ```json\n  \"msg\": \"payment validation failed: unsupported currency EUR req=1ca691e1-dda7-433a-b334-5e5bdca3aa0a\"\n  \"stack\": \"File \\\"/app/payments/app.py\\\", line 81, in charge\\n amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n raise UnsupportedCurrency(\"\n  ```\n  `payments-v2`'s `validate_v2` function throws `UnsupportedCurrency` (HTTP 500) whenever non-USD currencies (such as `EUR`, `GBP`, `JPY`) are processed.\n- **Evidence E4 (Direct Endpoint Verification)**: Calling POST `/charge` with `{\"amount\": 50, \"currency\": \"EUR\"}` via `http_request` against `payments-v1` returned `HTTP 200`, whereas calling `payments-v2` returned `HTTP 500` (`UnsupportedCurrency`).\n\nWhen `payments-v2` returned HTTP 500 to `orders`, `orders` responded to `gateway` with HTTP 502 Bad Gateway, causing customer checkouts for non-USD currencies to fail.\n\n---\n\n#### 3. Action Taken\n1. **Proposal**: Recorded rollback proposal for `payments` to version `v1` using `propose_rollback` (Proposal ID: `45788987-f01d-49c9-a8e8-72ad85692767`) with justifications `[\"E1\", \"E2\", \"E3\", \"E4\"]`.\n2. **Execution**: Executed `rollback`, routing traffic for `payments` back to `v1` (deploy ID `D-3`).\n\n---\n\n#### 4. Verification Post-Action\n- Metric sampling on `gateway` post-rollback confirmed 0 new HTTP 502 errors over a 16-second window (`requests_total{status=\"502\"}` remained constant at 207 while `status=\"200\"` grew from 1785 to 1949).\n- A synthetic checkout request with `currency: \"EUR\"` sent to `gateway` `/checkout` succeeded with `HTTP 200` (`payments_version: \"v1\"`).\n\n---\n\n```verdict\nculprit_service: payments\nculprit_change: D-2\ncause: payments v2 validation function (validate_v2) raises UnsupportedCurrency HTTP 500 for non-USD currencies (EUR, GBP, JPY), causing orders to fail with HTTP 502 on checkout.\naction: rollback\nevidence_label: causal\n```",
+  "turns": [
+    {
+      "turn_id": "01m16xthfh1xv7dggnejw5yvac.local",
+      "status": "done",
+      "events": 26,
+      "tool_calls": [
+        "list_services",
+        "current_versions",
+        "deploy_events",
+        "get_current_datetime",
+        "tail_logs",
+        "tail_logs",
+        "tail_logs",
+        "tail_logs",
+        "http_request",
+        "http_request",
+        "get_metric",
+        "get_metric",
+        "grep_logs",
+        "propose_rollback",
+        "rollback"
+      ],
+      "usage": {
+        "input_tokens": 202114,
+        "output_tokens": 2311,
+        "cache_read_tokens": 114068,
+        "model_calls": 8,
+        "threads": [
+          "main"
+        ]
+      }
+    },
+    {
+      "turn_id": "01m16xv93bjw4knhy4ht5hh4vf.local",
+      "status": "done",
+      "events": 16,
+      "tool_calls": [
+        "current_versions",
+        "get_metric",
+        "exec",
+        "get_metric",
+        "tail_logs",
+        "http_request"
+      ],
+      "usage": {
+        "input_tokens": 391542,
+        "output_tokens": 2035,
+        "cache_read_tokens": 350580,
+        "model_calls": 7,
+        "threads": [
+          "main"
+        ]
+      }
+    }
+  ],
+  "events": [
+    {
+      "type": "turn.created",
+      "id": "01m16xthfyh16nes5bt42f3f3b",
+      "turn_id": "01m16xthfh1xv7dggnejw5yvac.local",
+      "previous_turn_id": null,
+      "input": [
+        {
+          "type": "user.message",
+          "content": "payments error alert firing -- gateway /checkout 5xx rate elevated above the 5% threshold for 2 consecutive windows. Investigate; roll back if a deploy caused it."
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T14:12:22.138Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m16xthgj5tft86bp09cavgd9",
+      "created_at": "2026-08-29T14:12:22.162Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "spyglass-deployer",
+          "id": "spyglass-deployer",
+          "session_id": "1122da7d-6284-4251-85ed-188d3264df78",
+          "transport_type": "streamable-http"
+        },
+        {
+          "name": "spyglass-rawtools",
+          "id": "spyglass-rawtools",
+          "session_id": "af9c8d27-dfbc-47a3-8b38-759ee1ded219",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_543651",
+          "type": "function",
+          "function": {
+            "name": "list_services",
+            "arguments": "{}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Es4LCssLARFNMg9ODw/Vki/4kjv44lC4Tjr7MRWjIECkm3raYgXsM+iCjFUZhOO4VKkR9N1LHt1eZg5YdrJpJpHkGLxexHg2xIo5JlTzqOUL92UQawR2I+NU5GgI1aCt4Tj4sQVeY3xTs41Ev+aAFl12lAr9WE7PYPXyXsti9zIzRr2eHL7Lcp0Xj971FFW/jg5uov5KXgSrw9x0WcqrflhyeEqeNomnqJ3cPHLlIY3vfvzH1FMWze0hqyxJSLaB4kd5EE58pafJwr2h4eWGBnSVVHysgmo3u1eruYr2ZXZy/V0gbmEhSsmYxu/WEV+XaqCHwoJDXyZJ1XyR9BkgzzuROaJ8VZcki3xedluYc8aHEFPOxGIhX9DYQsCxqExVIEX/txTn5TGcMw3z3POBPxg0JmPd7AB5W1JclfNN4EdArn5F7hA2UENXzLxmgPcCFqf+5VUl6eRtfsj8qj0Pclrd23BSlvUKI/vwyP6bLkW9eM8czS14TvQ6Lhe64ILwKUokpr/zEwWOQU0HHRvBPwasjLKLteF3sIZcCHCPrTNcDCHExfRL3jXZXpe3zdFjmUTntSCb2R8EfI/q9CaiRvAREa02qItHz+g00bpG1iJyVMWsQdPEySJx+D3NktiDc3baf+RQJY25usbHGnO0EZGE1OKmuY7lUDOOa9WZtW9kgCs2GLy+eAEGmFbWWZH5tfVIad3w8LslgwyFe35EcuiXUxBdXu73zXn8YBWlNfNHU407ndzEiEcGWr5gu3+rdOH/h6ac+6TdmQhv2nniXzjR6mlyNr3x3qeFVutnDrHL/tyZ6RJD0+QMwWCzqnybYOwADesyRAYM0E8covIxpsF+NiV9a7qYDcs5lhGyPJ8X6Xqn+WaXGJbkGqZiUPhzQCyAmFoPpO2ZXHLpD+WzF7OVL0ddpScIMDMP0uZGVuonPyhKAKjYF8Yh2WAP/I7JQO0nXaHu6DDgPhlLlGAkx0CSs1riYzvex+sPHdpWnjx47/OUPYy5fm0goFbOidXx709WgBhhp80g+GYeFX06m9oCPx+GuIxKbfdOsp78WFGo3XyZfWEbmjwREcRLB9Y9W8Mbfn535oEQD9zOtPH0rs8pwnkSEzeIPcIbYe3BxB/1SI8pVzEy4STtcmeX4G60RH3H8pNyL5r+jqB29BnptJ2PFf0a52AuB9ExGTC79JyF3JK7iLuVBEDTV90EbLFgUoJu+rct/U5H17AiwVOrNksUfsmdQIJVPgccAkn7sf9qMu+Vofaee0m7PPXgnCwomaYNY+ADLd6jiE+PNCxW3almzEV0ZTWK6GRSPcHI9epjZRK+18144+ADBO+JTexUIQ32MPWnvcE8OxyZUe3Hmab9ufei7CsOJjbuCMUQ0CiVSKLMAVnJUAPGODKJgy7PeQQ+3+c+XNtSv7IzcZDhML/yC49d3VLgrBcBib8PFHRFIcxuucMZ7zGDrd5A6w7ztH+Nlhlw5sY4wpetHiK7l5GvUfwPYyA+nZRRy8pSRgUrtIwhpmSgslIK4CO2jaU5hPOfxOXRW5Kw+HtUcq5sbEQQdcubZtuVnwsr6DAI/1vFMMes+NMBZq+SBfS5e4vjztfrl3YxUkYtvFZgl07rNx2VOTLDYBzbHZcCdoeVwRxR5GNpd35mYnFij0aHF0MO2VWJJ18TPkfXTeO++KX9hCq+EQaD/fATecd4JjZiCLtcXOE5eo2H6nOhmcorJMUV/72i/s8MeuPMCHzGoF59qNzQdBNL1jSZTA/7VHMXtGCP/BeONvgroC9PvSYi4vKyzHPLa6aDO3W754xW28EJcE9Tyb7KKfuz1m9qwqioktGXrdw+vljfnG7N3Z1CClisTOaSnfSrQyPzx9k14JN2i/6GlenDWK0MWIVdnd4FmGVGoH9Toy1kQw49BwrK/CJ2D/jHSKBpY9eNyHQdOtV350qmGtOLZF5/fehc/+2UMfbvUScJL/mYwz6i5iYS5B0VtQ=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "list_services",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_543662",
+          "type": "function",
+          "function": {
+            "name": "current_versions",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "current_versions",
+            "server_id": "spyglass-deployer",
+            "server_name": "spyglass-deployer"
+          }
+        },
+        {
+          "id": "call_543663",
+          "type": "function",
+          "function": {
+            "name": "deploy_events",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "deploy_events",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xthgnkpwev60chvdrzx8g",
+      "created_at": "2026-08-29T14:12:25.119Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 5544,
+        "output_tokens": 327,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 0
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_543651",
+      "content": "[\n  {\n    \"name\": \"gateway\",\n    \"role\": \"public edge; POST /checkout\",\n    \"upstreams\": [\n      \"orders\"\n    ],\n    \"log_file\": \"data/logs/gateway.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:18080/metrics\",\n    \"base_url\": \"http://127.0.0.1:18080\"\n  },\n  {\n    \"name\": \"orders\",\n    \"role\": \"persists orders; scores each order with the fraudcheck vendor (synchronous); charges via payments\",\n    \"upstreams\": [\n      \"payments-v1 or payments-v2 (per current routing)\",\n      \"postgres\",\n      \"fraudcheck\"\n    ],\n    \"log_file\": \"data/logs/orders.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8081/metrics\",\n    \"base_url\": \"http://127.0.0.1:8081\"\n  },\n  {\n    \"name\": \"payments-v1\",\n    \"role\": \"payments service, version v1\",\n    \"upstreams\": [\n      \"redis\"\n    ],\n    \"log_file\": \"data/logs/payments-v1.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8082/metrics\",\n    \"base_url\": \"http://127.0.0.1:8082\"\n  },\n  {\n    \"name\": \"payments-v2\",\n    \"role\": \"payments service, version v2\",\n    \"upstreams\": [\n      \"redis\"\n    ],\n    \"log_file\": \"data/logs/payments-v2.jsonl\",\n    \"metrics_url\": \"http://127.0.0.1:8083/metrics\",\n    \"base_url\": \"http://127.0.0.1:8083\"\n  },\n  {\n    \"name\": \"loadgen\",\n    \"role\": \"synthetic traffic generator\",\n    \"upstreams\": [\n      \"gateway\"\n    ],\n    \"log_file\": \"data/logs/loadgen.jsonl\",\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"postgres\",\n    \"role\": \"orders database\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"redis\",\n    \"role\": \"payments cache\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  },\n  {\n    \"name\": \"fraudcheck\",\n    \"role\": \"external fraud-scoring vendor (third party), called synchronously by orders before each charge; NOT observed: no logs, no metrics, no endpoint here\",\n    \"upstreams\": [],\n    \"log_file\": null,\n    \"metrics_url\": null,\n    \"base_url\": null\n  }\n]",
+      "type": "tool.response",
+      "id": "01m16xtmdb8wa8ka1vftem3jfm",
+      "created_at": "2026-08-29T14:12:25.131Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_543662",
+      "content": "{\"gateway\":{\"version\":\"v1\",\"deploy_id\":null,\"since\":\"2026-08-29T14:09:28.860Z\"},\"orders\":{\"version\":\"v1.1\",\"deploy_id\":\"D-1\",\"since\":\"2026-08-29T14:10:08.881Z\"},\"payments\":{\"version\":\"v2\",\"deploy_id\":\"D-2\",\"since\":\"2026-08-29T14:10:58.903Z\"}}",
+      "type": "tool.response",
+      "id": "01m16xtmdb8wa8ka1vftem3jfn",
+      "created_at": "2026-08-29T14:12:25.131Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_543663",
+      "content": "# 3 journal entries from data/deploy/journal.jsonl\n{\"n\":1,\"kind\":\"init\",\"service\":\"*\",\"version\":\"v1\",\"ts\":\"2026-08-29T14:09:28.861Z\",\"actor\":\"operator\",\"note\":\"all services at v1\"}\n{\"n\":2,\"kind\":\"deploy\",\"deploy_id\":\"D-1\",\"service\":\"orders\",\"version\":\"v1.1\",\"from_version\":\"v1\",\"ts\":\"2026-08-29T14:10:08.881Z\",\"actor\":\"ci-bot\"}\n{\"n\":3,\"kind\":\"deploy\",\"deploy_id\":\"D-2\",\"service\":\"payments\",\"version\":\"v2\",\"from_version\":\"v1\",\"ts\":\"2026-08-29T14:10:58.903Z\",\"actor\":\"deploy-bot\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtmdb8wa8ka1vftem3jfp",
+      "created_at": "2026-08-29T14:12:25.130Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1319434",
+          "type": "function",
+          "function": {
+            "name": "get_current_datetime",
+            "arguments": "{}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EuAECt0EARFNMg8bmD5lSVnHJNFgQsUgyzENYSPx+A80SrtnI+jtw9Mqo+Ce2TlHh11dmfVKai2YGRwAfjGfO3Jca/1lAHSnkQGPbLPYLI1p7IJ/c+QvPDchQr7rcv/Kl6MAEfaGIEe2iuVEUied6PB7izeIjeZbqbaRoMLIyZOxAZWLtZYzhoMBDifCKKvlgmItZ3mtuerKl8yRPlRPWi8glkXkHRlxrySAp7pBdi2cR41ZL6gMMcCnq1TWizA7euKFr7Yh6zKQapLCMFPL208zARKeymMXqctEAKtRlRqKEIO/w1QzQzCHWARtbYrT5V/n6sYN0c+dqogSztGBG5KVFZCW8y+/LcbK2nrG9c6P3whb3YFCJCmott+PynG42JnXP+XCSCfOlNWLl7gMSSeYXFL7wFK0/KJpddgyrdOAvyILrKCwiVolryP6hjIswMvLrPyIW4W9OnRpiyP0Xn4XvwMm2rixaCfV2Db185IcnmT6j2sKMjdf1KrVmqYJXTCXOZv40FMOCked1y9Z3QyipGcoissL5eeAlhybHjPOoBM3Z78Rmb2zLkQiBn1ONsVUX27r41w877qDfGAhd/kzFx4kAvD+IUYH4V0bfltUzeVG86c1xGRLRBQP/rDSIYryENvz5+s/xjlSd687AlrsVnUn6KADgDpHj5tAeoX7lEO74t0mdkcmmxTMd9nislg9s2SSOd8JNvt/XXzwDlbyPsp/MkVUgDYUIwyhkRt4J8zUXI5m9O9xB2bS+YQGCcDkwp/Bw5yrMShgFhjHiN0se72Qj/cThyb+fZU4Y5HJj1g="
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "get_current_datetime"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xtmdgwq6fa7a11qcr3mma",
+      "created_at": "2026-08-29T14:12:27.397Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 7036,
+        "output_tokens": 168,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 1468
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1319434",
+      "content": "{\"unixEpochMS\":1788012747416,\"iso\":\"2026-08-29T14:12:27.416Z\"}",
+      "type": "tool.response",
+      "id": "01m16xtpmr39arwrmwe8v3febt",
+      "created_at": "2026-08-29T14:12:27.416Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_731554",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"lines\":30,\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "ErAECq0EARFNMg9wynND/2wbn47ahorfhfimdesuQUBhfKndG5Hml5ch3TyVud6eebAQdthdrTyO8lThc/HrBt57Mj7rPJN0Q4E1K12FXlEUfmt2X0eu+N0CgSTd2d4Q7yyv7UaPGbAgrXtJNfFtnWg8XChYbrF0RtCy9YK8gmK8xadmbSPist+t5xoiedcQGeQZr/Kc9dJ0BtPg5vQ6eH+1m5Q1dX4V85BhgO/x0H9rVMAwRSLAYeSMcDpooz93FVcblmsePZbxZEwETHjgZNBeFO1I9HZBI68CZIhXgIZ1OkGL0gFDmNujmcBBAUguySzScENOzuBSy04FV+ZdpV5rcG4vrq/T7pf7qXKN10T/GtLbls2ozODt8TQgGFgN4FkFW/YupNybcqotaajmV+svtY6SWyJltLtOsOR88KlWCs5MV6KuQpab9ON0e24k+24K5k6au8trWOy4JxTGdMbpNU9N4P+WbgEvfLf38ULrrkQxsHNWg1OqAmxCYk/XX9DMJ1qltJrq3OMWHBlvhpU9+uw9L//ukUQa1Syqb3OlX+BwOmdMBOBorZNzweQzZ25GzOOvLCB/cdLDrLPpzCejBzFHAD9zcvIVm35ODaNglwukMB1wTUXFhm5sdvtcGmSMrL1OoH2u+NueGeopzYxbSRFIhhZe5m9U3vSWOvqzJmMXJ7NKUik6dyu1wov6Ggmw/SZQq7DjPHoQKkBIEGY6sxI+KDhT7AvhWRL7Jvq8XRI="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_731562",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"lines\":30,\"instance\":\"orders\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_731566",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"lines\":30,\"instance\":\"payments-v2\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_731570",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"lines\":30,\"instance\":\"payments-v1\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xtpmxp493pfynxtpkydct",
+      "created_at": "2026-08-29T14:12:29.565Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 7275,
+        "output_tokens": 223,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 1707
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_731554",
+      "content": "# 30 of 3852 lines from data/logs/gateway.jsonl (most recent 30)\n{\"ts\":\"2026-08-29T14:12:28.260Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"dea6a37e-2755-4942-89cf-c27c5f5b787e\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":72.7}\n{\"ts\":\"2026-08-29T14:12:28.267Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-327\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":77.62}\"}\n{\"ts\":\"2026-08-29T14:12:28.332Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":66.2}\n{\"ts\":\"2026-08-29T14:12:28.352Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-160\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":71.08}\"}\n{\"ts\":\"2026-08-29T14:12:28.416Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":64.6}\n{\"ts\":\"2026-08-29T14:12:28.431Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-75\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":49.02}\"}\n{\"ts\":\"2026-08-29T14:12:28.515Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-262\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":21.38}\"}\n{\"ts\":\"2026-08-29T14:12:28.524Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":94.4}\n{\"ts\":\"2026-08-29T14:12:28.594Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":80.0}\n{\"ts\":\"2026-08-29T14:12:28.620Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"EUR\\\",\\\"customer\\\":\\\"cust-313\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":58.21}\"}\n{\"ts\":\"2026-08-29T14:12:28.653Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:12:28.654Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":34.9}\n{\"ts\":\"2026-08-29T14:12:28.730Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-210\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":19.91}\"}\n{\"ts\":\"2026-08-29T14:12:28.815Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":86.0}\n{\"ts\":\"2026-08-29T14:12:28.841Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"0ff8a84c-008b-4779-b4cb-83962b080b7e\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"0ff8a84c-008b-4779-b4cb-83962b080b7e\",\"x-client-class\":\"premium\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"GBP\\\",\\\"customer\\\":\\\"cust-203\\\",\\\"card_class\\\":\\\"premium\\\"}\"}\n{\"ts\":\"2026-08-29T14:12:28.847Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"0ff8a84c-008b-4779-b4cb-83962b080b7e\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":400,\"latency_ms\":7.0}\n{\"ts\":\"2026-08-29T14:12:28.919Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"x-client-class\":\"premium\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-1\\\",\\\"card_class\\\":\\\"premium\\\",\\\"amount\\\":82.49}\"}\n{\"ts\":\"2026-08-29T14:12:29.007Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":90.0}\n{\"ts\":\"2026-08-29T14:12:29.022Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"x-client-class\":\"premium\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-231\\\",\\\"card_class\\\":\\\"premium\\\",\\\"amount\\\":44.41}\"}\n{\"ts\":\"2026-08-29T14:12:29.100Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":79.3}\n{\"ts\":\"2026-08-29T14:12:29.136Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-405\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":39.77}\"}\n{\"ts\":\"2026-08-29T14:12:29.218Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-233\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":46.3}\"}\n{\"ts\":\"2026-08-29T14:12:29.223Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":89.2}\n{\"ts\":\"2026-08-29T14:12:29.281Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":64.4}\n{\"ts\":\"2026-08-29T14:12:29.315Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"1bd12715-c6e7-4a7b-b712-e8134e01009d\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"1bd12715-c6e7-4a7b-b712-e8134e01009d\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-461\\\",\\\"card_class\\\":\\\"standard\\\"}\"}\n{\"ts\":\"2026-08-29T14:12:29.324Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"1bd12715-c6e7-4a7b-b712-e8134e01009d\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":400,\"latency_ms\":9.5}\n{\"ts\":\"2026-08-29T14:12:29.423Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"JPY\\\",\\\"customer\\\":\\\"cust-373\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":9.71}\"}\n{\"ts\":\"2026-08-29T14:12:29.469Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:12:29.470Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":47.3}\n{\"ts\":\"2026-08-29T14:12:29.526Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c3a623ce-f019-4ca2-b54f-ae0b534b3dbb\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"c3a623ce-f019-4ca2-b54f-ae0b534b3dbb\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-49\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":73.94}\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtrrg1x7qq09s7zw52gtc",
+      "created_at": "2026-08-29T14:12:29.583Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_731562",
+      "content": "# 30 of 3676 lines from data/logs/orders.jsonl (most recent 30)\n{\"ts\":\"2026-08-29T14:12:28.146Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"db049d89-b451-412b-b975-864cd9da9362\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.146Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"db049d89-b451-412b-b975-864cd9da9362\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":31.9,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.257Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"dea6a37e-2755-4942-89cf-c27c5f5b787e\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.258Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"dea6a37e-2755-4942-89cf-c27c5f5b787e\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":65.6,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.328Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.329Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":59.4,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.410Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.411Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":55.8,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.519Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.521Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":86.5,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.589Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.590Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":70.1,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.649Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.650Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":26.3,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.812Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:28.812Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":78.4,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:28.844Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"0ff8a84c-008b-4779-b4cb-83962b080b7e\",\"msg\":\"order rejected: invalid payload\"}\n{\"ts\":\"2026-08-29T14:12:28.844Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"0ff8a84c-008b-4779-b4cb-83962b080b7e\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":400,\"latency_ms\":1.1,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.003Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:29.004Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":82.3,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.096Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:29.097Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":71.3,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.218Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:29.219Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":80.0,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.277Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"order placed\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:29.277Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":200,\"latency_ms\":55.8,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.320Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"1bd12715-c6e7-4a7b-b712-e8134e01009d\",\"msg\":\"order rejected: invalid payload\"}\n{\"ts\":\"2026-08-29T14:12:29.320Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"1bd12715-c6e7-4a7b-b712-e8134e01009d\",\"msg\":\"request completed\",\"route\":\"/orders\",\"status\":400,\"latency_ms\":1.9,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:12:29.465Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:12:29.466Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":39.2,\"deploy_id\":\"D-1\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtrrhr6860mcvxqxrmas4",
+      "created_at": "2026-08-29T14:12:29.579Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_731566",
+      "content": "# 30 of 1615 lines from data/logs/payments-v2.jsonl (most recent 30)\n{\"ts\":\"2026-08-29T14:12:27.897Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"26d18922-0ac3-4b9c-b7e6-daaf69175c82\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":56.0,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:27.961Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"2c1fd0db-689a-4f90-a550-0af12777a40b\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.000Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"2c1fd0db-689a-4f90-a550-0af12777a40b\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":39.5,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.030Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"18db494a-56f2-4e96-8d1d-122aab37ff0a\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.092Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"18db494a-56f2-4e96-8d1d-122aab37ff0a\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":63.0,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.140Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"db049d89-b451-412b-b975-864cd9da9362\",\"msg\":\"payment validation failed: unsupported currency EUR req=db049d89-b451-412b-b975-864cd9da9362\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.6,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=db049d89-b451-412b-b975-864cd9da9362\\n\"}\n{\"ts\":\"2026-08-29T14:12:28.209Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"dea6a37e-2755-4942-89cf-c27c5f5b787e\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.254Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"dea6a37e-2755-4942-89cf-c27c5f5b787e\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":46.2,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.285Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.326Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"8988266f-8e67-47d8-831b-dc7053a3b34e\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":42.0,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.370Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.407Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c6a3e5d4-53c9-4c60-8551-e6e8504d39e0\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":37.7,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.454Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.515Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"37bbf154-2119-41c1-b966-83556f72bb3c\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":63.0,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.538Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.586Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"105fef51-b0af-40d2-8e3e-4f5f04612c71\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":48.7,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.643Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"msg\":\"payment validation failed: unsupported currency EUR req=1ca691e1-dda7-433a-b334-5e5bdca3aa0a\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.5,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=1ca691e1-dda7-433a-b334-5e5bdca3aa0a\\n\"}\n{\"ts\":\"2026-08-29T14:12:28.759Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:28.809Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"18b685c5-86df-405b-b0ce-beff934b45a8\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":51.4,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:28.950Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:29.000Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"539e832e-0be1-4d38-a1be-3068525f38eb\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":51.8,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:29.042Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:29.092Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"d7aae31f-6afd-4346-acc6-9033296e44d5\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":51.0,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:29.168Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:29.215Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c19bfe2a-7517-4bfa-9298-345c29fcd3e2\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":48.2,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:29.239Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:29.274Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"e66ecec5-6852-433e-bbd0-a126d086d4d6\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":35.7,\"deploy_id\":\"D-2\"}\n{\"ts\":\"2026-08-29T14:12:29.459Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"msg\":\"payment validation failed: unsupported currency JPY req=d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.8,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency JPY req=d961cea0-8a62-4b5c-ac4b-7dbd1961da1f\\n\"}\n{\"ts\":\"2026-08-29T14:12:29.548Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c3a623ce-f019-4ca2-b54f-ae0b534b3dbb\",\"msg\":\"fast-path validation passed for currency USD\"}\n{\"ts\":\"2026-08-29T14:12:29.573Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"INFO\",\"req_id\":\"c3a623ce-f019-4ca2-b54f-ae0b534b3dbb\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":27.1,\"deploy_id\":\"D-2\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtrrhr6860mcvxqxrmas5",
+      "created_at": "2026-08-29T14:12:29.582Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_731570",
+      "content": "# 30 of 915 lines from data/logs/payments-v1.jsonl (most recent 30)\n{\"ts\":\"2026-08-29T14:10:55.979Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"b142de87-d109-4fe5-93c3-fc1bd77a80b8\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":30.7}\n{\"ts\":\"2026-08-29T14:10:56.069Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"13eb4358-1ab9-4662-9bc0-2912451972c4\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":27.7}\n{\"ts\":\"2026-08-29T14:10:56.188Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"300ffa68-4f22-4efa-a8e1-3f98c1ab6398\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":24.1}\n{\"ts\":\"2026-08-29T14:10:56.280Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"022ba960-4f00-4a6a-b189-d0b117dcabf5\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":51.4}\n{\"ts\":\"2026-08-29T14:10:56.395Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"54d144d5-18ed-4297-acb8-3fceb3e1511b\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":28.4}\n{\"ts\":\"2026-08-29T14:10:56.497Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"4a454398-0993-46ff-9a1e-72b2de6a7c6e\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":41.4}\n{\"ts\":\"2026-08-29T14:10:56.606Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"806a29ad-f6b2-4778-be50-8d4d293a60be\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":29.4}\n{\"ts\":\"2026-08-29T14:10:56.715Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"6e4f8ea3-f0ad-46f7-9b1f-b4d49f9bc7bd\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":54.8}\n{\"ts\":\"2026-08-29T14:10:56.844Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"746e49a8-1817-4ac5-bfb8-b6c616509f14\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":54.5}\n{\"ts\":\"2026-08-29T14:10:56.932Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"7927a136-fc73-4358-8208-9fc875f321cb\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":35.4}\n{\"ts\":\"2026-08-29T14:10:57.042Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"ae3acdf2-eac9-41cc-9ea3-93eadb646a33\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":57.9}\n{\"ts\":\"2026-08-29T14:10:57.152Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"aebbf69f-fdc2-405c-a023-282ae09dd9e8\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":59.6}\n{\"ts\":\"2026-08-29T14:10:57.246Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"91f448bb-2880-4cff-a035-d9af4a68bbad\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":29.4}\n{\"ts\":\"2026-08-29T14:10:57.340Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"15f87768-1bef-49f1-b700-9b2ed17b6fc6\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":29.7}\n{\"ts\":\"2026-08-29T14:10:57.450Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"366f4268-7c7d-4490-9ab7-f449ff169376\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":49.5}\n{\"ts\":\"2026-08-29T14:10:57.608Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"efbbd216-0ff9-4696-a15a-58bdc632554b\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":63.8}\n{\"ts\":\"2026-08-29T14:10:57.681Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"2d15420b-a2bc-4715-8087-be6a4514c416\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":30.7}\n{\"ts\":\"2026-08-29T14:10:57.770Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"d49edd91-2f1f-4132-826b-2236e4a07521\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":43.1}\n{\"ts\":\"2026-08-29T14:10:57.879Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"c8aae0c8-b057-41fd-8916-f0b779ba547e\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":58.9}\n{\"ts\":\"2026-08-29T14:10:57.987Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"aaff96ff-b904-4b52-93eb-459932d4d3a5\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":25.3}\n{\"ts\":\"2026-08-29T14:10:58.071Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"ef0ec9cb-756a-4e2d-a581-18d126879443\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":32.5}\n{\"ts\":\"2026-08-29T14:10:58.216Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"202f00a8-db75-4ada-951f-6de1f17daa26\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":35.3}\n{\"ts\":\"2026-08-29T14:10:58.287Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"30efcbd3-f3ce-48b7-b5b3-0874591c228f\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":24.0}\n{\"ts\":\"2026-08-29T14:10:58.399Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"690f1c3c-69ff-4cc0-b4bc-405cffc19ef6\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":40.6}\n{\"ts\":\"2026-08-29T14:10:58.519Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"29a3e5f6-984a-4463-8d81-42152d490058\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":63.7}\n{\"ts\":\"2026-08-29T14:10:58.641Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"fed01fca-1966-4047-9b64-2c52e7e7eec3\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":40.8}\n{\"ts\":\"2026-08-29T14:10:58.753Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"da095b0c-4a37-4da3-aaef-0d3e085acd62\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:58.755Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"da095b0c-4a37-4da3-aaef-0d3e085acd62\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":59.3}\n{\"ts\":\"2026-08-29T14:10:58.841Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"69b6175e-76c5-4d2b-a9fd-d358cb33478a\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":53.4}\n{\"ts\":\"2026-08-29T14:10:58.921Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"4eb18c88-43b6-4613-a89f-5f9de12def58\",\"msg\":\"request completed\",\"route\":\"/charge\",\"status\":200,\"latency_ms\":54.1}\n",
+      "type": "tool.response",
+      "id": "01m16xtrrhr6860mcvxqxrmas6",
+      "created_at": "2026-08-29T14:12:29.584Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1547766",
+          "type": "function",
+          "function": {
+            "name": "http_request",
+            "arguments": "{\"method\":\"POST\",\"body\":\"{\\\"amount\\\": 50, \\\"currency\\\": \\\"EUR\\\"}\",\"instance\":\"payments-v1\",\"headers\":[\"content-type: application/json\"],\"path\":\"/charge\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EsUICsIIARFNMg97YBEF7MWoeeUZqosucrdfI2SGKp5BmnZQS2gqNvZ9Cv7+gt7V/HigPMqxAnD3t7aJ/VOmsqTq7DVr5Ive/faXa+KYNd2oLj/MAMHR75AlflUoXFgpCtDbDoIQaP7od7Fg7qbfkUlLIMjRmN+WejHiiCcdznhCIKO6nQscGucSVTX6OGm7zrW/FA9M/C90ufLuVJeHyirvcTr/1dNRhi8KErXrKlqc/MfxSWVO3BPhEGY3whnFIowmJrndf4YQIZ3dvcOZ1ql/2TnVyzhkwAyxll51VQe4v8dZMqER0JcZiyP8tURrGgC0IbE8tAM9PFHyn8l4UOLmj5sx9a1Oz21zgeBrCRyVRV+/BzsJxDM5r/MIGJ5/+b3KzomspNxhHStFFb6JO47BBG36/YVwAfWrJWkoxMyZoDDFPTUo1xNB32aaQKE7iUOwsOy7/Usn5yQKuO1xy+zr2V85l7TYpSFnEAw54ldhmFlZXTK/7sDxFG859WbkCBqwz6Z4YBHXejNzyzvIeSFuue8AeCunezo+6DbcGuBDMIQWN+D8/ndv9/3RjD/X1xFyZB3fsd5GgGzuI+R/dIPl1mZtCm0h+2XlO2/P9qEUSLKfDMKskiyKEDUS3z6xevYDxOB349A1BKKLvm6VMZ+lni3NAgGtWOQR34ZYbxM2V7FrnRvYa3qyqWSl/LFgsGBLlPhxF0mT4wuKRORrg2t/jt/1VnqpIVNhWhIkmz0g1pAK8t9fE1zqQ+F0zwPIwfVt4Io3+vEHm8DswuBw02LUwQo9q7NYKkX6ytuNgckKs5ql7eu+0PD2DghH4w8fyAm4z2d4oTzersxivS8J0khhAzWwXJ3HKypBrNUpUV45jgyP/8cBExpUgeqgOAfC0dW45JOkDZqY2K9q2QTSeQrmbL15Txcs/oxVIo7faVH4k5R4TP7hnv2IHPGcFRRHNejDtg79pYdi5FKjX0DgZhuTbMExUOv05X8CrjCjYBbc82TRWyksAGV6Wl6wKPrIrKuWXpzyid2WUK9dmUmKqTWjfLaz4hAIfmFv2/VEzJTF9vKsSc0cCbWqGfOyPub36tasqu1lMyPRfI75RJtIk5mXQCAWuu0kRB9MSuHvQ5QF4NOYfhuPYncZL0ZH80PWmmRi14azy+PHXvmWG97QU0eVDOL8uwI8QuCpJxyCzkgoFKhJoHxI16QwQ3se0ZR+F5L40t965WBKffBGFygrvhEn7VMb7f/6VI/sRhL/7X66Ki+6lhaACBFNDdMeG++L6gm8H8ddqTUHXSsdYcdQLFGlb165Uv/9rvSHnDW8Ra49uCIvbTxnI3A7XJ9bfgg9JJhvP+06EPr60HXgQDPFxJhrn9zK409AIwgZwXamtKi5BI9SL+wBqplI1Z0tYCXVP/ICjhKSkye4T/8PgkOAUo7O1P6kyiUNbvNvWJdv3shNg+b0HVI2bg=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "http_request",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_1547770",
+          "type": "function",
+          "function": {
+            "name": "http_request",
+            "arguments": "{\"body\":\"{\\\"amount\\\": 50, \\\"currency\\\": \\\"EUR\\\"}\",\"path\":\"/charge\",\"headers\":[\"content-type: application/json\"],\"method\":\"POST\",\"instance\":\"payments-v2\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "http_request",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xtrrsa7ach3jz8j2m5rhc",
+      "created_at": "2026-08-29T14:12:32.572Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 24528,
+        "output_tokens": 421,
+        "cache_read_tokens": 0,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 18960
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1547766",
+      "content": "HTTP 200 (49.6 ms)\ncontent-type: application/json\nx-request-id: 534915ac-da76-4960-80b3-99fe9aa16af5\n\n{\"charge_id\":\"ch_d772ba4c823151b2\",\"status\":\"approved\",\"amount\":50.0,\"currency\":\"EUR\",\"version\":\"v1\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtvqrxy2mf88hd3t7cnw8",
+      "created_at": "2026-08-29T14:12:32.632Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_1547770",
+      "content": "HTTP 500 (12.2 ms)\ncontent-type: application/json\nx-request-id: f6b2e9a0-da37-46bd-a6b6-caede483ca60\n\n{\"error\":\"UnsupportedCurrency\",\"req_id\":\"f6b2e9a0-da37-46bd-a6b6-caede483ca60\"}\n",
+      "type": "tool.response",
+      "id": "01m16xtvqrxy2mf88hd3t7cnw9",
+      "created_at": "2026-08-29T14:12:32.596Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1054328",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EpkHCpYHARFNMg8i+ji5A4d+VlXkyinWuib27bO9zUFVjD880e6GYedugnxT7zuxbRJG9b7eRAO9CaMBaJZGekojc5kr2ZW89NSYDQTpH1WM9GXWozlzN1aepwCytJPqrtUFhc5J60gUetYiTCV0f/w4PP+7UNHqwzkXLG3KmcYhHWtjBS4sr1GGNAvwj75E/z0h+lTs3oLlav5B821vxOcDJJJUxqImXWxQX5jLRGvG9/MD5v3SWQAuvc2ISmLEwfd2oWhmLXFfZ7m0TrCEJ7Uq67+pIWGjNYeS2bqssl71D36De64y7/64kskHOA3B1Dtm3dMXTF/igoX3HP/Y4SVz1GR96pjlr2FgcflPxO/G0GxQNKVs20/qmLzIEnJQySc3TZVCcV4d24Pj+5UrlDGNUTLdRF/1DejjegWIk0I3Cb80Wfgvj1ohxXvGCCqthw8jkrkFHZcMABqeun2pf2VXZ98kkL909bTV9y/n63XHA35GorxT0nPDQu6HNqTzhYcv9GKp7mMvjQLA08yDDhfgz63XvVhLTfy5lsDA7o4IEUyfYVlunG/7jYvUvxchlG5487WqH/P+JmC9nDatAUkxykq/Vh6VVo43xaLpvgsAX+R5G80PgCsY2HupSFrJX0kFssHqrz+wFMx8h90Yv0403FZC0XSwqLxy4kbuO1cY+5co6kJexSoLJgaNYmMT2i+77MKh1Xr/zWoJgY1Y+AbWINXon8GR7GauTpyZa/Z2FzOJeQuJv5EL8BG9hFlEzHWXCEcG7aK8jv6w8aaI1RT4zfEpNSsNVijBZQhLP+SJ4EaK/Vqrk+AGkwwwRi7Rfk1HdOvgDPbBXn5SeDVwzBY+Wb6yGeU9t+xHVuY9CR8cMczrrHrxbMIgy6hz1dR3b+REhVc9XAbAIqxEOTwVmtbWwqfTE9Rl8UxC6PikiKaX9Poe6a7BrILxmeFfunyesCbqJ0YrKcFuTevpUnapB0jAqvpgXuZdPqOF0JAmYYwsGJfeNSQ6RRe79c/q28wOm9k+8ormWtmI9V/1RA32yyz9q8ubDEqYgFrtCwXhBD+WXKOHSIcDtMsOiKGrvByVqZ/g21m6F9AvkSAKiVa1L6afiCNW+lQBtQG8fMewNNH9Z5Much3pN6iJiWsVq1/7LAk9iNvKnhOIpeFua/uMLdR4h7Ux7bysx1Y6J6TwmZHiBJMLWIjhHH13DdP/qFGg5Erp70TIbpMv51F0"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        },
+        {
+          "id": "call_1054332",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"payments-v2\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xtvr0etxb384zwxpb4h61",
+      "created_at": "2026-08-29T14:12:35.521Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 25192,
+        "output_tokens": 270,
+        "cache_read_tokens": 16261,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 19624
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1054328",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788012755)\npython_gc_objects_collected_total{generation=\"0\"} 181164.0\npython_gc_objects_collected_total{generation=\"1\"} 24550.0\npython_gc_objects_collected_total{generation=\"2\"} 1856.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 414.0\npython_gc_collections_total{generation=\"1\"} 37.0\npython_gc_collections_total{generation=\"2\"} 2.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3317632e+07\nprocess_start_time_seconds 1.78801255886e+09\nprocess_cpu_seconds_total 19.03\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1653.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 32.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 187.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.788012567273916e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.788012576204142e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880126596599317e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 187.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880126596600058e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 23.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 33.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 236.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 1824.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 1872.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 132789.30000000005\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788012567273977e+09\n",
+      "type": "tool.response",
+      "id": "01m16xtyjk0x4w9ckytgf9548j",
+      "created_at": "2026-08-29T14:12:35.539Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_call_id": "call_1054332",
+      "content": "# http://127.0.0.1:8083/metrics (fetched unix 1788012755)\npython_gc_objects_collected_total{generation=\"0\"} 83173.0\npython_gc_objects_collected_total{generation=\"1\"} 15507.0\npython_gc_objects_collected_total{generation=\"2\"} 584.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 262.0\npython_gc_collections_total{generation=\"1\"} 23.0\npython_gc_collections_total{generation=\"2\"} 1.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.4030848e+08\nprocess_resident_memory_bytes 5.369856e+07\nprocess_start_time_seconds 1.78801254523e+09\nprocess_cpu_seconds_total 8.25\nprocess_open_fds 15.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/charge\",service=\"payments\",status=\"200\"} 758.0\nrequests_total{route=\"/charge\",service=\"payments\",status=\"500\"} 188.0\nrequests_created{route=\"/charge\",service=\"payments\",status=\"200\"} 1.7880126590625756e+09\nrequests_created{route=\"/charge\",service=\"payments\",status=\"500\"} 1.788012659653016e+09\nerrors_total{route=\"/charge\",service=\"payments\"} 188.0\nerrors_created{route=\"/charge\",service=\"payments\"} 1.788012659653041e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/charge\",service=\"payments\"} 188.0\nlatency_ms_bucket{le=\"10.0\",route=\"/charge\",service=\"payments\"} 188.0\nlatency_ms_bucket{le=\"25.0\",route=\"/charge\",service=\"payments\"} 208.0\nlatency_ms_bucket{le=\"50.0\",route=\"/charge\",service=\"payments\"} 683.0\nlatency_ms_bucket{le=\"100.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"250.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"500.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_count{route=\"/charge\",service=\"payments\"} 946.0\nlatency_ms_sum{route=\"/charge\",service=\"payments\"} 33823.10000000003\nlatency_ms_created{route=\"/charge\",service=\"payments\"} 1.7880126590626633e+09\n",
+      "type": "tool.response",
+      "id": "01m16xtyjk0x4w9ckytgf9548k",
+      "created_at": "2026-08-29T14:12:35.537Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_954805",
+          "type": "function",
+          "function": {
+            "name": "grep_logs",
+            "arguments": "{\"pattern\":\"ERROR\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EokJCoYJARFNMg8Ihrta/VlTKAfe260oYO+WZw+N4qJAFt9bFc0ePAoEI219HnOhubtaFD2NQlKw3puqa25EbpwOhOp1rnG9ZYtxgg1qdMigbWXt633WUbpJQreyhMvbj86qf4wF+GonMJEpZAQV/fWVHZYAfnm/0eqjrpJRVENARszRncXGbdbrbedZOrVx3eQaksihJwNgt88hBM4ZHUxwN9ovPPFEn0ie8hBCIyFCy5OTHh6zhGo2aJeyFOtxIHnfbts7xoThMGwDWvOOyF54d7DxEV8K/0yDOkIo9aVzRwyxj00dI/IjH8aGt/m2iYC6cVpnXjTIDCiXy7q8dR6DsXk09OBtyC1hD6DwTXATM2oFdETsvFAsrjiOVw7ivGFLw+U/tJzzLlZXyKdE/G1xVURSD7dVBZRU55gfifbVfVUeDmMVooOpB6sSZBkqahGut8tdXNUd1lS70zDUJay64Y+bUJeFAn8X2yjfDYeUOtl/31GJVYqzv11KVpOb6aHYZwJLzgZNBvTTIDmi07ELCHWDGGiubhdCVtnh6yDagDn12Ziug87qwg5PB81xlCO+rOZf2ifnDRipJvbjslEX+8K9cmidYHw4cQ0gVSKbFeeSHTeoYurTG6dLhxgmFf0ioCEELIcACamY5dGV3LI9uNz9d+9CRqAIUWSGaXRA+y2Zb6gljpCMv5GxsAjE/V5bQUpx+vAlO/0L4TmMQY1MaCo55GQPDtG3vzWE7L5K2JXApN2Re7S1jt++oWMtBq6kuN1zVdPnoj2tuv8S/R1E7XWRLLTzggduA+fb79sCpruQO+BOHi/NSzr6VJY5vPgnbQKfYHBpIMbhgBODHv7TDrheqH+Dinz/KbY0yT+XTR43xu0qinnGWamQ9Rd0AogRdzEMxwkphc0Rf5WX5zNDZTxPYa48ue9KZUigo+7e1gXQX9q3xWr3t6Pjq6aAm9rJz9hOiKlMUw3xYwSOQIU4giapQF7Ebl0hueRJnmx/r46+XIpGhDQsOkmxhZtMTZj5kW6XdoFQcI3R3yayvGEzFwfBoyppD91tJNS/YNI169ixMrLWtY6oL1zGwUuN1oqzXUBZRGR1MTVYTkaRJKGExKNX5I8B+sGEKSjW+qxoch08eHFZm9i8NTOW1BLx3x7sYxztxBzih34zGYGaMEAXPq6KBCcB+rFUF0y6zoTP/oQU4bii9Y4sCdliJOm5fuH7Mgk4Dl8RfzGgcY6N01fWgQJdhOgDvU816qPB1QKa8PGnr0VKS3xYowTcBysgiZtX/RQKLni0uUXPE/5cP7j04+JnavLAIeYAHrP3zsjwRfx8WPFCb3mjKft4xbxPqnQHbBFwEJeHEVjXz+tVaNvBSlmCyQXbR0UskCD7nSgXUuAvOFkiTLL8T3/AnMhU7wbuVo7rvGdVyQJHjZY9koGdj57PSavJl2sAHY0/FFUVKbW5Jyn0EbJp5BF1yU9VjQfs2Ku+TRlbVhFDsyE/FXUYRb8biY+rpHfD+vkM2rUQR1pugKbHfOEiCTMEbldkRa170SjaesNRyIhb"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "grep_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xtyjtvwg3v96tvqq70qb5",
+      "created_at": "2026-08-29T14:12:38.658Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 27490,
+        "output_tokens": 302,
+        "cache_read_tokens": 24392,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 21922
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_954805",
+      "content": "# 100 of 994 matching lines across 5 file(s) -- TRUNCATED; narrow the window or raise limit\n{\"ts\":\"2026-08-29T14:09:32.489Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"0a8381be-c85a-4a46-90e0-f4a0fbdd3933\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:09:40.992Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9d642932-0066-453d-ade2-99a14a90cd0c\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:09:44.928Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"19a692c9-0d70-4ea4-bb9b-2d45a35055e4\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:09:47.568Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6ae66582-b852-43cd-9442-b5e695831d58\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:03.699Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c8b648e0-12a8-40c5-9bab-7f4a8cd74c27\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:03.799Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e22649ee-38a0-4ffe-9972-78c51789be63\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:18.656Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"740a5bed-5323-4aff-a1e5-38a1dc5cd673\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:21.034Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"18ecde2b-0a80-4167-b4b3-f20eaed0fb57\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:29.305Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"5601f6a5-34b6-485d-acd4-180ab0dc75fb\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:29.530Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"563b04fa-9784-413d-9840-764294047909\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:42.732Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"3446c0f0-619e-47ff-baec-8f42641118ec\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:42.957Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a8d99292-4a85-4443-bba8-78d934b55b86\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:48.319Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"488c6ea4-99f9-4338-a5bd-ab1474ae4b96\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:48.572Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec5412b4-0d74-4c38-bc58-82ecb34de663\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:58.753Z\",\"service\":\"payments\",\"instance\":\"payments-v1\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"da095b0c-4a37-4da3-aaef-0d3e085acd62\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:10:59.651Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"17c03e28-2e3d-4de2-a504-d1c64312153d\",\"msg\":\"payment validation failed: unsupported currency EUR req=17c03e28-2e3d-4de2-a504-d1c64312153d\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=17c03e28-2e3d-4de2-a504-d1c64312153d\\n\"}\n{\"ts\":\"2026-08-29T14:10:59.655Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"17c03e28-2e3d-4de2-a504-d1c64312153d\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:10:59.656Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"17c03e28-2e3d-4de2-a504-d1c64312153d\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":34.3,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:10:59.659Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"17c03e28-2e3d-4de2-a504-d1c64312153d\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:10:59.660Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"17c03e28-2e3d-4de2-a504-d1c64312153d\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":42.4}\n{\"ts\":\"2026-08-29T14:10:59.871Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"msg\":\"payment validation failed: unsupported currency EUR req=c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=c2ce56bd-8301-43a6-849b-50bc05e5d461\\n\"}\n{\"ts\":\"2026-08-29T14:10:59.879Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:10:59.880Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":31.2,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:10:59.883Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:10:59.883Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c2ce56bd-8301-43a6-849b-50bc05e5d461\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":39.3}\n{\"ts\":\"2026-08-29T14:11:00.901Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"09795e75-671e-4bb8-b783-b6f6d775e809\",\"msg\":\"payment validation failed: unsupported currency EUR req=09795e75-671e-4bb8-b783-b6f6d775e809\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=09795e75-671e-4bb8-b783-b6f6d775e809\\n\"}\n{\"ts\":\"2026-08-29T14:11:00.907Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"09795e75-671e-4bb8-b783-b6f6d775e809\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:00.907Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"09795e75-671e-4bb8-b783-b6f6d775e809\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":27.6,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:00.910Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"09795e75-671e-4bb8-b783-b6f6d775e809\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:00.911Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"09795e75-671e-4bb8-b783-b6f6d775e809\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":37.2}\n{\"ts\":\"2026-08-29T14:11:01.324Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"msg\":\"payment validation failed: unsupported currency EUR req=c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\\n\"}\n{\"ts\":\"2026-08-29T14:11:01.329Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:01.330Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":26.5,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:01.333Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:01.334Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"c0c6e3ff-25e3-4ccd-9ca5-24f251bfc946\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":34.7}\n{\"ts\":\"2026-08-29T14:11:02.383Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"2aa946d4-11c7-476c-ae73-03c050ab3660\",\"msg\":\"payment validation failed: unsupported currency EUR req=2aa946d4-11c7-476c-ae73-03c050ab3660\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.1,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=2aa946d4-11c7-476c-ae73-03c050ab3660\\n\"}\n{\"ts\":\"2026-08-29T14:11:02.388Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2aa946d4-11c7-476c-ae73-03c050ab3660\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:02.388Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2aa946d4-11c7-476c-ae73-03c050ab3660\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":33.0,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:02.391Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2aa946d4-11c7-476c-ae73-03c050ab3660\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:02.392Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"2aa946d4-11c7-476c-ae73-03c050ab3660\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":39.9}\n{\"ts\":\"2026-08-29T14:11:02.588Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"ae1782f6-9138-4474-8473-b982d1a529db\",\"msg\":\"payment validation failed: unsupported currency EUR req=ae1782f6-9138-4474-8473-b982d1a529db\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=ae1782f6-9138-4474-8473-b982d1a529db\\n\"}\n{\"ts\":\"2026-08-29T14:11:02.594Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ae1782f6-9138-4474-8473-b982d1a529db\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:02.595Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ae1782f6-9138-4474-8473-b982d1a529db\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":26.7,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:02.598Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ae1782f6-9138-4474-8473-b982d1a529db\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:02.599Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ae1782f6-9138-4474-8473-b982d1a529db\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":37.7}\n{\"ts\":\"2026-08-29T14:11:02.820Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"msg\":\"payment validation failed: unsupported currency EUR req=a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=a9f7c6d1-c647-4ae2-8490-9370e430fb91\\n\"}\n{\"ts\":\"2026-08-29T14:11:02.826Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:02.827Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":29.5,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:02.830Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:02.831Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"a9f7c6d1-c647-4ae2-8490-9370e430fb91\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":37.8}\n{\"ts\":\"2026-08-29T14:11:03.025Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"60b61367-f46e-4787-abaf-89c7319fa2f7\",\"msg\":\"payment validation failed: unsupported currency GBP req=60b61367-f46e-4787-abaf-89c7319fa2f7\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=60b61367-f46e-4787-abaf-89c7319fa2f7\\n\"}\n{\"ts\":\"2026-08-29T14:11:03.031Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"60b61367-f46e-4787-abaf-89c7319fa2f7\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:03.032Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"60b61367-f46e-4787-abaf-89c7319fa2f7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":38.6,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:03.035Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"60b61367-f46e-4787-abaf-89c7319fa2f7\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:03.036Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"60b61367-f46e-4787-abaf-89c7319fa2f7\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":46.7}\n{\"ts\":\"2026-08-29T14:11:03.152Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"641a4b74-54c9-4d44-a353-a243594de8d7\",\"msg\":\"payment validation failed: unsupported currency GBP req=641a4b74-54c9-4d44-a353-a243594de8d7\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=641a4b74-54c9-4d44-a353-a243594de8d7\\n\"}\n{\"ts\":\"2026-08-29T14:11:03.157Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"641a4b74-54c9-4d44-a353-a243594de8d7\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:03.158Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"641a4b74-54c9-4d44-a353-a243594de8d7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":37.3,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:03.161Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"641a4b74-54c9-4d44-a353-a243594de8d7\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:03.162Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"641a4b74-54c9-4d44-a353-a243594de8d7\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":45.9}\n{\"ts\":\"2026-08-29T14:11:03.474Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"7d05955b-0d9e-4328-9f99-7c8097d38ab9\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:11:04.536Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"719deadd-817c-4779-952d-8f91064fe164\",\"msg\":\"payment validation failed: unsupported currency GBP req=719deadd-817c-4779-952d-8f91064fe164\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.5,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=719deadd-817c-4779-952d-8f91064fe164\\n\"}\n{\"ts\":\"2026-08-29T14:11:04.542Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"719deadd-817c-4779-952d-8f91064fe164\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:04.543Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"719deadd-817c-4779-952d-8f91064fe164\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":29.5,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:04.547Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"719deadd-817c-4779-952d-8f91064fe164\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:04.548Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"719deadd-817c-4779-952d-8f91064fe164\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":39.0}\n{\"ts\":\"2026-08-29T14:11:04.890Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"9eb03954-a83d-42df-a4aa-212aa68213c7\",\"msg\":\"payment validation failed: unsupported currency EUR req=9eb03954-a83d-42df-a4aa-212aa68213c7\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":2.1,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=9eb03954-a83d-42df-a4aa-212aa68213c7\\n\"}\n{\"ts\":\"2026-08-29T14:11:04.898Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9eb03954-a83d-42df-a4aa-212aa68213c7\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:04.899Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9eb03954-a83d-42df-a4aa-212aa68213c7\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":30.7,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:04.903Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9eb03954-a83d-42df-a4aa-212aa68213c7\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:04.904Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"9eb03954-a83d-42df-a4aa-212aa68213c7\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":39.5}\n{\"ts\":\"2026-08-29T14:11:05.849Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"87352231-a469-4757-ba70-c9f6e9368ad0\",\"msg\":\"payment validation failed: unsupported currency EUR req=87352231-a469-4757-ba70-c9f6e9368ad0\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.2,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=87352231-a469-4757-ba70-c9f6e9368ad0\\n\"}\n{\"ts\":\"2026-08-29T14:11:05.854Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"87352231-a469-4757-ba70-c9f6e9368ad0\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:05.854Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"87352231-a469-4757-ba70-c9f6e9368ad0\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":29.9,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:05.857Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"87352231-a469-4757-ba70-c9f6e9368ad0\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:05.858Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"87352231-a469-4757-ba70-c9f6e9368ad0\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":37.3}\n{\"ts\":\"2026-08-29T14:11:05.980Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"6d7168e9-705a-401c-9131-0c8bcd35637c\",\"msg\":\"payment validation failed: unsupported currency EUR req=6d7168e9-705a-401c-9131-0c8bcd35637c\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.6,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=6d7168e9-705a-401c-9131-0c8bcd35637c\\n\"}\n{\"ts\":\"2026-08-29T14:11:05.986Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6d7168e9-705a-401c-9131-0c8bcd35637c\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:05.987Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6d7168e9-705a-401c-9131-0c8bcd35637c\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":37.9,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:05.991Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6d7168e9-705a-401c-9131-0c8bcd35637c\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:05.991Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"6d7168e9-705a-401c-9131-0c8bcd35637c\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":47.4}\n{\"ts\":\"2026-08-29T14:11:06.051Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"05c55810-54b7-48fa-8a60-b33299fb38a9\",\"msg\":\"payment validation failed: unsupported currency GBP req=05c55810-54b7-48fa-8a60-b33299fb38a9\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=05c55810-54b7-48fa-8a60-b33299fb38a9\\n\"}\n{\"ts\":\"2026-08-29T14:11:06.056Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"05c55810-54b7-48fa-8a60-b33299fb38a9\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:06.056Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"05c55810-54b7-48fa-8a60-b33299fb38a9\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":24.9,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:06.059Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"05c55810-54b7-48fa-8a60-b33299fb38a9\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:06.059Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"05c55810-54b7-48fa-8a60-b33299fb38a9\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":32.0}\n{\"ts\":\"2026-08-29T14:11:06.290Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"ec96af27-5461-4433-bbdf-144cd11756d5\",\"msg\":\"payment validation failed: unsupported currency EUR req=ec96af27-5461-4433-bbdf-144cd11756d5\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.2,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency EUR req=ec96af27-5461-4433-bbdf-144cd11756d5\\n\"}\n{\"ts\":\"2026-08-29T14:11:06.294Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec96af27-5461-4433-bbdf-144cd11756d5\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:06.294Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec96af27-5461-4433-bbdf-144cd11756d5\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":19.6,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:06.297Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec96af27-5461-4433-bbdf-144cd11756d5\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:06.297Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"ec96af27-5461-4433-bbdf-144cd11756d5\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":26.8}\n{\"ts\":\"2026-08-29T14:11:06.419Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"msg\":\"payment validation failed: unsupported currency GBP req=588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=588955c0-090d-4d2f-8eb7-803ec3fcac0e\\n\"}\n{\"ts\":\"2026-08-29T14:11:06.425Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:06.425Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":36.7,\"deploy_id\":\"D-1\"}\n{\"ts\":\"2026-08-29T14:11:06.428Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"msg\":\"checkout failed: orders returned HTTP 502\",\"status\":502,\"upstream\":\"orders\"}\n{\"ts\":\"2026-08-29T14:11:06.429Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"588955c0-090d-4d2f-8eb7-803ec3fcac0e\",\"msg\":\"request failed\",\"route\":\"/checkout\",\"status\":502,\"latency_ms\":44.6}\n{\"ts\":\"2026-08-29T14:11:06.596Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"c82585fa-c60b-446e-86bf-1fb70e2bd8c9\",\"msg\":\"cache write failed: TimeoutError\",\"upstream\":\"redis\",\"detail\":\"transient; retried once, ok\"}\n{\"ts\":\"2026-08-29T14:11:07.159Z\",\"service\":\"payments\",\"instance\":\"payments-v2\",\"version\":\"v2\",\"level\":\"ERROR\",\"req_id\":\"e6824710-58bd-49da-8dd2-c8431ab88733\",\"msg\":\"payment validation failed: unsupported currency GBP req=e6824710-58bd-49da-8dd2-c8431ab88733\",\"route\":\"/charge\",\"status\":500,\"latency_ms\":1.4,\"deploy_id\":\"D-2\",\"stack\":\"stapi/middleware/asyncexitstack.py\\\", line 18, in __call__\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 670, in __call__\\n    await self.middleware_stack(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 2734, in app\\n    await route.handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 1281, in handle\\n    await super().handle(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/routing.py\\\", line 280, in handle\\n    await self.app(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 158, in app\\n    await wrap_app_handling_exceptions(app, request)(scope, receive, send)\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 53, in wrapped_app\\n    raise exc\\n  File \\\"/usr/local/lib/python3.12/site-packages/starlette/_exception_handler.py\\\", line 42, in wrapped_app\\n    await app(scope, receive, sender)\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 144, in app\\n    response = await f(request)\\n               ^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 706, in app\\n    raw_response = await run_endpoint_function(\\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/usr/local/lib/python3.12/site-packages/fastapi/routing.py\\\", line 352, in run_endpoint_function\\n    return await dependant.call(**values)\\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 81, in charge\\n    amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\\n  File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n    raise UnsupportedCurrency(\\nUnsupportedCurrency: payment validation failed: unsupported currency GBP req=e6824710-58bd-49da-8dd2-c8431ab88733\\n\"}\n{\"ts\":\"2026-08-29T14:11:07.164Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6824710-58bd-49da-8dd2-c8431ab88733\",\"msg\":\"payments charge failed with HTTP 500\",\"status\":500,\"deploy_id\":\"D-2\",\"upstream\":\"payments\",\"upstream_version\":\"v2\"}\n{\"ts\":\"2026-08-29T14:11:07.165Z\",\"service\":\"orders\",\"instance\":\"orders\",\"version\":\"v1\",\"level\":\"ERROR\",\"req_id\":\"e6824710-58bd-49da-8dd2-c8431ab88733\",\"msg\":\"request failed\",\"route\":\"/orders\",\"status\":502,\"latency_ms\":27.1,\"deploy_id\":\"D-1\"}\n",
+      "type": "tool.response",
+      "id": "01m16xv1mkyfxezff95af3ggdt",
+      "created_at": "2026-08-29T14:12:38.675Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1258372",
+          "type": "function",
+          "function": {
+            "name": "propose_rollback",
+            "arguments": "{\"service\":\"payments\",\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"to_version\":\"v1\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Eu0KCuoKARFNMg+rpDUFTi60+zqrlZwAHMKR3kzrfUnDMQr1avi9PlpE81c5DVfsuiMumzVOhFAkQI3aaiQMdW4NghbbIROr9uYd6+arfsnkH+W1Pvh38nJDSY0tVLYEAtY0SkHNAE0mz0tga3xWZhtmD9l6Rf5MVCSEt+WE4PkJj2HVqn/KSSP4t7E0S+DAnz5jCKNdX4UUTGINmTjkzOlBOduiQh4DzGGMAgtftkmA9iwGnFN9k9gbSKnCPo+7NWY9qR4dvnbjs357QAPzPb437hXT0/AdNkTjZF7w5xJHTAcvDBYMh2lctkrE/ey6363pGQaAqzefuQImZ4JU7Ryd0nABUOI2o9v4ege/u3Jh9UC02vNQHOiDPr9XE12MiOU3WmSNsD2LW3VwFX38ivWFhO4qm1wAAQ/EaTUy8auKk8s5BYpJxPhbMGCVaRZg0XZiGZae4J/Uu/+AZbN5BgJ24nhMuPvIzxQWXjp86wFtZbXmSaFEnib6GbEB/s4u6v+c77SD1UAohj0bvKeT0akVrs9XXYbbnxmX1ZBWlLwRU5btGms23UfYmIJulPnVAVfGTDFS/kSGF/gbl7IOyrYPVZmqLZ1neb65CmyZoxkbVzzo428YgFpW8Q5obnw5g5KJHYGvxuanSWpY1E6/lpGBCuuhg4JQQWAjw8l7oa1cJER4wDrM0CUsYc+HlyUfwitQQCUwI7FhJnUQEChFXL/KZyWb5Pk3h3ikOUN/vyC9Bk/l18elWnSqQvWeAl9NLWn97VnXzIxsZWkLL8Hjgo5NpUEBOIiYgci1aCYidh4tRbhY+Fc+pv9OooeIVu9hEgvb8Abagdswk49TcoUaXUYaAYn/MMIUgXZq96DmiwJFaT2GzX2WWhQYxuXTWnqzOQ4ssdtAw9OGmAiFw/Q1SKXPjpfQDl7f5kEyKfJNN/izP4I3iEN2o3GXt8O9UE7afe9hw5n9fpLdvVv72TXO0Lwdtncu/JayG1CnfNgPhMC76H/azMgq55e7wUjJi9aHZSqDKvSkxM0XpAb60TsiACGte0XZhsKSdtcVEO46eWymi3dDUfVx8fhcuTMkw17oiJ2ny0vWWqFOzTmJETwg4ruO/ObPopikFetoItNBydCvXOci913AmYvkX2EH87EvE5YHFQt/WX06OlvY+3SKFT747RlWNEca13ylwVae5G3VpCpvWatWIlHYewgpkfZ9TKeZAfnYMG8YfInQzlAE8GCnvzXBPgzyalKn/S6HOgZdGpKD2vFb+kH3xVz6cWZ8YOWB6ACgKrRr4XhBX/Zu0x2j2dlTNrGkN4hqzpJyQcEPPgI9z5VPy+BakNTbZ3ZaUpMw5JFX8orZ5PBykoPfnZnPPvdD2jd5SXuU5qzPMdrahhaX4cru7vYNfPWGrJsOnjz7LQ3wYpGD8z2HEsl+D9SEizgSKdPer8aoGwK3pcIC8azt3lKnRTXCFjTZwJSUknWnBxKqJeP/8Fx665TIekBe+HZq+klz94mxwMqFM/gUtkzqyOtWyq7LuVNsYOHsqrRhe1MK4BhKslFriAvRJvMuaceRDV7aNKVjqNWEY1l1vC09ayxUsyjdMetzrLSrRV0QwYAHfbmPFbq3yA1EpoHasVaTB/LFTvNhdE5yIR553OjcNPjnk1ntwB0SkpuWuJNl+9+WkO0rMErd97F81JWTw/f0VEUu3Q6S0iFrnESDz9yEq/lCHvY6CfLqB2DUDbGGIbmRCSRHw+zo5kO8fn22S/t3kWpuZ9ABcYrVcxXEZkEx+GirjVkj+fIYDA9CadUiffXQ4CyNjb2Bb7GV5VnPvKvH/koblPlymggpCaZqQ20bhUnFpVWJZOUDr6ne"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "propose_rollback",
+            "server_id": "spyglass-deployer",
+            "server_name": "spyglass-deployer"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xv1mv8tpbm07eaas5syy8",
+      "created_at": "2026-08-29T14:12:42.348Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 52151,
+        "output_tokens": 398,
+        "cache_read_tokens": 24474,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 46583
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1258372",
+      "content": "{\"expected_current\":\"v2\",\"expires_at\":\"2026-08-29T14:22:42.358Z\",\"journal_entry\":{\"actor\":\"agent\",\"expected_current\":\"v2\",\"expires_at\":\"2026-08-29T14:22:42.358Z\",\"from_version\":\"v2\",\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"kind\":\"proposal\",\"n\":4,\"note\":\"proposal recorded; execution requires human approval of rollback(proposal_id)\",\"request_id\":\"45788987-f01d-49c9-a8e8-72ad85692767\",\"service\":\"payments\",\"ts\":\"2026-08-29T14:12:42.358Z\",\"version\":\"v1\"},\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"next\":\"call rollback(proposal_id, service, to_version, expected_current, justification_eids) restating exactly these values; it requires human approval and is refused if the live version has moved or the proposal has expired\",\"proposal_id\":\"45788987-f01d-49c9-a8e8-72ad85692767\",\"service\":\"payments\",\"to_version\":\"v1\"}",
+      "type": "tool.response",
+      "id": "01m16xv57r0902p0yddcpjfv7b",
+      "created_at": "2026-08-29T14:12:42.360Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1872751",
+          "type": "function",
+          "function": {
+            "name": "rollback",
+            "arguments": "{\"expected_current\":\"v2\",\"to_version\":\"v1\",\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"proposal_id\":\"45788987-f01d-49c9-a8e8-72ad85692767\",\"service\":\"payments\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "Eo4DCosDARFNMg+MPUJ+RzmjIgsn7siE2KXF7FHevHrKzANv0gxtpSnYaak5jNrr2gY7djIRIYvsbhhIRXeCSA9y2Qtss21eNNYdu1AXbA/EE5YIaP/h3U9TG1L7LIdQQnyjigmb0Qh4Ci6WjFC8RDr8xYP5EWoz746Z9VjenS/efumsb6oI3MF5eOSz5b3QuBfH8JNqCgfxzPpawwFco364JmaJGIQzzWQjb02/JkO6yVqLiZHltEhKuut2lYLqoYReXZDUfUNNqLfGn7JVTXrSaSPGv5Hu3/fp1HOV6cEG3XLWjDWCO+AxSXYmBrb4zYCHyPm59oLMGuMNDDF7nIOjvRCBxx/PsWjQMyTxcKXZ/QqX+e64DyIPUe+rqD+tsMTtkKnC6a++ZuJiTL6c39oqqYXyadYLDvAQ4Mpf7gKD6AvGk5txV/giHBpS6EtZggT6leBzk8CdMnOIPyoB61NAYMyZUQSfq0h397osBCVVuzkCqKrhmMXeTPw2YFGtWqNkw/vDBLDztwjFutYXCQs="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "rollback",
+            "server_id": "spyglass-deployer",
+            "server_name": "spyglass-deployer"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xv59yceatpw7ngd236yz2",
+      "created_at": "2026-08-29T14:12:45.935Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 52898,
+        "output_tokens": 202,
+        "cache_read_tokens": 48941,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 47330
+        }
+      }
+    },
+    {
+      "type": "tool.approval_required",
+      "id": "01m16xv8qmw7antnqa2hjyjf5z",
+      "created_at": "2026-08-29T14:12:45.940Z",
+      "thread_id": "main",
+      "tool_calls": [
+        {
+          "id": "call_1872751",
+          "source_event_id": "01m16xv59yceatpw7ngd236yz2"
+        }
+      ]
+    },
+    {
+      "type": "turn.done",
+      "id": "01m16xv8qnwd7pkd269srryx66",
+      "created_at": "2026-08-29T14:12:45.941Z",
+      "state": {
+        "status": "done",
+        "output": null,
+        "required_actions": [
+          {
+            "type": "tool.approval_required",
+            "id": "01m16xv8qmw7antnqa2hjyjf5z",
+            "created_at": "2026-08-29T14:12:45.940Z",
+            "thread_id": "main",
+            "tool_calls": [
+              {
+                "id": "call_1872751",
+                "source_event_id": "01m16xv59yceatpw7ngd236yz2"
+              }
+            ]
+          }
+        ],
+        "completed_at": "2026-08-29T14:12:45.941Z",
+        "metrics": {
+          "total_input_tokens": 202114,
+          "total_output_tokens": 2311,
+          "total_tokens": 204425,
+          "total_cache_read_tokens": 114068,
+          "total_reasoning_tokens": 1852
+        }
+      },
+      "thread_id": null
+    },
+    {
+      "type": "turn.created",
+      "id": "01m16xv94je8zk25xj5s83rcxv",
+      "turn_id": "01m16xv93bjw4knhy4ht5hh4vf.local",
+      "previous_turn_id": "01m16xthfh1xv7dggnejw5yvac.local",
+      "input": [
+        {
+          "type": "user.tool_approval",
+          "thread_id": "main",
+          "tool_call_id": "call_1872751",
+          "approval": {
+            "status": "allow"
+          }
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T14:12:46.328Z",
+      "thread_id": null
+    },
+    {
+      "tool_call_id": "call_1872751",
+      "content": "{\"journal_entry\":{\"actor\":\"agent\",\"deploy_id\":\"D-3\",\"from_version\":\"v2\",\"justification_eids\":[\"E1\",\"E2\",\"E3\",\"E4\"],\"kind\":\"rollback\",\"n\":5,\"request_id\":\"45788987-f01d-49c9-a8e8-72ad85692767\",\"service\":\"payments\",\"ts\":\"2026-08-29T14:12:46.378Z\",\"version\":\"v1\"},\"note\":\"routing changed; verify recovery from telemetry before closing the incident (verify_recovery with this deploy_id)\",\"outcome\":\"executed\"}",
+      "type": "tool.response",
+      "id": "01m16xv95d439axkxxzw39tjxs",
+      "created_at": "2026-08-29T14:12:46.381Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1145475",
+          "type": "function",
+          "function": {
+            "name": "current_versions",
+            "arguments": "{}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EokCCoYCARFNMg9k9e7YHGDQXJ25ND/HaBl2Pmzr2mUiFnjQxkdoATtWWAcLfjisIveuX2FbHJnPqE6rMI70SxbVVunqO1kN9ukziJKcyPRaZ4LW81JdV5G5SyJMHDzUSGcqGIBs00GhhA4aqrEybvFaxp4BNysApSqb7aOv5MvmKX1lfzPpjztb9hAoRl7vx/7RAc2FiCpJC7id9uSoqgKrIxSL7O1mcBrGZ9nYeWz+niN1NkJxU6AOHnTyhA3ue+bLEHiS33tuhFhn8HuGQJN6GUVVmwYvwXYW5wCI+ijCOhsEzpjVVig1/VF5t55CJZykcKtJcnj10c05vN/f4SkSZ0Twcax2sMxP1g=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "current_versions",
+            "server_id": "spyglass-deployer",
+            "server_name": "spyglass-deployer"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xv95hb4wbabga0ed6dawq",
+      "created_at": "2026-08-29T14:12:48.698Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 53272,
+        "output_tokens": 42,
+        "cache_read_tokens": 48934,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 47704
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1145475",
+      "content": "{\"gateway\":{\"version\":\"v1\",\"deploy_id\":null,\"since\":\"2026-08-29T14:09:28.860Z\"},\"orders\":{\"version\":\"v1.1\",\"deploy_id\":\"D-1\",\"since\":\"2026-08-29T14:10:08.881Z\"},\"payments\":{\"version\":\"v1\",\"deploy_id\":\"D-3\",\"since\":\"2026-08-29T14:12:46.378Z\"}}",
+      "type": "tool.response",
+      "id": "01m16xvbe4m0s9t4edz98fgbva",
+      "created_at": "2026-08-29T14:12:48.708Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1221344",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EvUECvIEARFNMg8AEvFJDs8IUG/in4CpQ8cBa9QMvib7lRLgb35Ktp6I8Vz98Tz9+b343JAjaBFYbjY/U3/MF8DsOQUMB6syCQtg/+nNVMgZfBPYInMwQWt2nC0x7OlhOvgmQM5gkdcFV54wOghPyuvChlMn4xWMbRqj5l8EiGKi828c33hb1H8QMjYwiezf/uF5oW0X6QKAuwJhcSU6/7rlRjx5WKANlqw5kDyBOc6nhLs4v0SjKGbqma4rOTeGe+mACfP4jON+YabTA73zMkNDFcK0uixDRgoJ3cDp8DmlneHopx5el/LTrZpfdfTlQaFgFkuaRXJuhnNNWR65D+qMh+gonDGUdLzBHY5OGJ0px5Xk8qG9EkgBZPg5+y8DChret0YwxNbODpjLx/UX+HGj6mbKrf2rAXC4d3Y9Fs2nNHy06KgXRkz8TO3gr/0pwd2k3dXHdksI3D/rNqIxPj8e9TIx7wHZMq9OX4yV9BtpZnAxfvd5U+WZAiItcPY89gvR4ZYjjGExSqLjcaYJs8xhc6DkMJiEf1WAIYDC1KvW0Eev72Sg3icrrKJNzmbK337NA+xkaBQ64kdntMxrTK19HgtenWYWnKAiT2B6oV2vO20o95sIdL4yH8kb2YjY1yenLj0bVZr7gcjRpKDP3FIuGOVHU6H0e5Qc9+FrmHXLV21ZMA+aYNovFXaVzfupUy2vAEv12Dp6Ltk5BXpiHKV3elilPQveQ9+pOb4496HVqbLphhi14GsqDGwx1+nhGUismS1GfA8xxV13y3ksH16i+3hnyYnM68whn7SyzmURhaa3t5WZDHk2Cjrd1THanZhoMcXz03c="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xvbeabh1f16m5npgxn4ma",
+      "created_at": "2026-08-29T14:12:51.078Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 53464,
+        "output_tokens": 142,
+        "cache_read_tokens": 48925,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 47896
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1221344",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788012771)\npython_gc_objects_collected_total{generation=\"0\"} 195763.0\npython_gc_objects_collected_total{generation=\"1\"} 27153.0\npython_gc_objects_collected_total{generation=\"2\"} 1856.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 441.0\npython_gc_collections_total{generation=\"1\"} 40.0\npython_gc_collections_total{generation=\"2\"} 2.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3317632e+07\nprocess_start_time_seconds 1.78801255886e+09\nprocess_cpu_seconds_total 20.560000000000002\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1785.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 38.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 207.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.788012567273916e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.788012576204142e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880126596599317e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 207.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880126596600058e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 28.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 39.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 264.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 1978.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 2030.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 143594.0\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788012567273977e+09\n",
+      "type": "tool.response",
+      "id": "01m16xvdrzm79njdmc2601xdkn",
+      "created_at": "2026-08-29T14:12:51.103Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_590058",
+          "type": "function",
+          "function": {
+            "name": "exec",
+            "arguments": "{\"intent\":\"Wait 5 seconds to allow traffic to flow post-rollback and measure error rate delta\",\"command\":\"sleep 5\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EuoCCucCARFNMg9b/g85vQsZyHI/1/VnRLgeLUkalF6miVQD20aPE0kUc9kCcZTECKxXLBAmNVG8E9r5HbGHXVWpDcXhYL3fXR0fgykZhXo2ukaIwaaerIgvlgb7+I5uVDMqjLJ6eygFE4hW/l/zvAj0zZNpA9L6MbdMb+mkVGXcwExsBe1wY9opGoKWsCwOsby42/kNleM9pgDhdtSv1o/G0X6oZDuAyQFKqz9WSf1bkncrAf3eMEQsG3vjOugAtWQOllV8dlwuqtb9/OC7e0R9cUq9PfA7s/A3qdw494ap2yJyWZmdQNipMBO8xa/YUPAs4pkbHNCDDaguV9Vyt93Dgo2WwkVkVeknKm6nVR1JlH9zCnEzSu3ZagcCfWZizRroYI0pWSrC3+vQ2mIAgNtW9SQfzXp/7+w8X6HnC4YVid5WMTeuo+mZoNoEc/YFPtvLIHO/DYbC8tR3/X0dBFxi1bpnVnIWj4Gah0g="
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "exec"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xvds5bf7eree0mg7mma4g",
+      "created_at": "2026-08-29T14:12:53.304Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 54662,
+        "output_tokens": 99,
+        "cache_read_tokens": 48921,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 49094
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_590058",
+      "content": "{\"error\":[{\"type\":\"text\",\"text\":\"Sandbox initialization failed: Failed to pip install pydantic>=2.0.0,<3.0.0 into sandbox .venv: WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProxyError('Cannot connect to proxy.', NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7d8f1bb469c0>: Failed to establish a new connection: [Errno 111] Connection refused'))': /simple/pydantic/\\nWARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProxyError('Cannot connect to proxy.', NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7d8f1bcb8c80>: Failed to establish a new connection: [Errno 111] Connection refused'))': /simple/pydantic/\\nWARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProxyError('Cannot connect to proxy.', NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7d8f1bf80080>: Failed to establish a new connection: [Errno 111] Connection refused'))': /simple/pydantic/\\nWARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProxyError('Cannot connect to proxy.', NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7d8f1bb7d970>: Failed to establish a new connection: [Errno 111] Connection refused'))': /simple/pydantic/\\nWARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProxyError('Cannot connect to proxy.', NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7d8f1bb7dd30>: Failed to establish a new connection: [Errno 111] Connection refused'))': /simple/pydantic/\\nERROR: Could not find a version that satisfies the requirement pydantic<3.0.0,>=2.0.0 (from versions: none)\\nERROR: No matching distribution found for pydantic<3.0.0,>=2.0.0\\n\"}]}",
+      "type": "tool.response",
+      "id": "01m16xvvpg3tt5xt1gbzkb7rv9",
+      "created_at": "2026-08-29T14:13:05.360Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1401285",
+          "type": "function",
+          "function": {
+            "name": "get_metric",
+            "arguments": "{\"instance\":\"gateway\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EsICCr8CARFNMg+gLHKpK4tmtKqtvUT8W02YiiDWLQgnScOXmfkKPP8fHPSVTlTiCS7HVZN8LHMFHZSibcIgjdtOIXx5JIBDLNich/lw6W3JjM8vtlVFnMO97eLpjfS6dUbtoorxL860OW+tKP11q4+MQ67B44ehLRdqcuyKijJEPyyTK4zlQujzUw4xH49IqhF925BLNmMZHQWd3+Y6Odecrk/WMjXmOLAK/fIj6AaRAl59erzH/t5u8Fl5sMnDyB5PncY3pIWvYaKRj3+X/GOIyDsZCnD/yC4nqcaiZTrhSkHMukn4LxvEMxaa2wHSbbqSFYxXyEHzz+VTHEJQ9P8FW14XUHflOCBCeXYOwrMs8xx6TYfRNTYQuEUI/5hewnnsri+PMx/Gxcs2yv21KYeJ79UsAadE1f0pbU7OyErLioUAYw=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "get_metric",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xvvpna46wmdw92ze23mt9",
+      "created_at": "2026-08-29T14:13:07.704Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 55374,
+        "output_tokens": 68,
+        "cache_read_tokens": 48916,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 49806
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1401285",
+      "content": "# http://127.0.0.1:18080/metrics (fetched unix 1788012787)\npython_gc_objects_collected_total{generation=\"0\"} 211917.0\npython_gc_objects_collected_total{generation=\"1\"} 29023.0\npython_gc_objects_collected_total{generation=\"2\"} 1856.0\npython_gc_objects_uncollectable_total{generation=\"0\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"1\"} 0.0\npython_gc_objects_uncollectable_total{generation=\"2\"} 0.0\npython_gc_collections_total{generation=\"0\"} 467.0\npython_gc_collections_total{generation=\"1\"} 42.0\npython_gc_collections_total{generation=\"2\"} 2.0\npython_info{implementation=\"CPython\",major=\"3\",minor=\"12\",patchlevel=\"14\",version=\"3.12.14\"} 1.0\nprocess_virtual_memory_bytes 1.3879296e+08\nprocess_resident_memory_bytes 5.3317632e+07\nprocess_start_time_seconds 1.78801255886e+09\nprocess_cpu_seconds_total 22.119999999999997\nprocess_open_fds 16.0\nprocess_max_fds 1024.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1949.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"400\"} 38.0\nrequests_total{route=\"/checkout\",service=\"gateway\",status=\"502\"} 207.0\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"200\"} 1.788012567273916e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"400\"} 1.788012576204142e+09\nrequests_created{route=\"/checkout\",service=\"gateway\",status=\"502\"} 1.7880126596599317e+09\nerrors_total{route=\"/checkout\",service=\"gateway\"} 207.0\nerrors_created{route=\"/checkout\",service=\"gateway\"} 1.7880126596600058e+09\nlatency_ms_bucket{le=\"5.0\",route=\"/checkout\",service=\"gateway\"} 0.0\nlatency_ms_bucket{le=\"10.0\",route=\"/checkout\",service=\"gateway\"} 28.0\nlatency_ms_bucket{le=\"25.0\",route=\"/checkout\",service=\"gateway\"} 39.0\nlatency_ms_bucket{le=\"50.0\",route=\"/checkout\",service=\"gateway\"} 266.0\nlatency_ms_bucket{le=\"100.0\",route=\"/checkout\",service=\"gateway\"} 2139.0\nlatency_ms_bucket{le=\"250.0\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_bucket{le=\"500.0\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_bucket{le=\"1000.0\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_bucket{le=\"2500.0\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_bucket{le=\"5000.0\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_bucket{le=\"+Inf\",route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_count{route=\"/checkout\",service=\"gateway\"} 2194.0\nlatency_ms_sum{route=\"/checkout\",service=\"gateway\"} 155848.89999999994\nlatency_ms_created{route=\"/checkout\",service=\"gateway\"} 1.788012567273977e+09\n",
+      "type": "tool.response",
+      "id": "01m16xvy0ep7x4mqbqxwchmgbk",
+      "created_at": "2026-08-29T14:13:07.726Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1074087",
+          "type": "function",
+          "function": {
+            "name": "tail_logs",
+            "arguments": "{\"instance\":\"gateway\",\"lines\":15}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "ErgECrUEARFNMg/LnRV7/mb6LJjWgxjzmugpR0/0AImOiHD8KhZZYCfZlnf3+mdwRcD3YIMLwso5BsPuzhrgeQxIsnLZukxAluGVzs/+vv/mYus4sqtLJqCRXDEkrXL1597ioOjvyjrB8o21odTzPqfpJK249i7vZ1zujat+OnneROZSupqs7vyk+EWBrYGURH3HadEAJx3WkTvrd0wcRDn7JnoB8xNJiCpma0N6lgoX+St9ZCiOPYMVdbeqKR6Prq6VLiA8cbu5/HdGQHaqdcEFrrO5A1epGwtu7hNqhCeiFGvJ2rp6IrJn8vLScxHJUWEaG+ewUtxLhn1QNJ4c9hr/kn0quLrghmum0oduxOHSdMEp8Y3TvKWgRYIRL9HFqs8bUiUmzNamjzDn7YB7xI6FbfkwBsFrJkLTLsSxa/O0GU/O9E42bR6S4X/3e4IXKIqxsa4I2POXPQ9G0k/Di2oBEqKulNj0VlL1PHBptcaS7X+fQY5EidEDOVqUMqmKV72aofMbRZP27uwDt6M/QH+VXxdweRbkDrlOIUvid6zK7Fc6S38wUe9B605Nz2PWyxwgoOKCFGAR5pP38EUymhO7H6pVKRZRkJc3rTWMbaSogkuwjOL7udBoa94lgt+bUvITJpHcweMcOuEhMn+e9wLzpd+TSj5mD4lsTM/ImDD/GdpX+xl2XIR7tyLf8Hg8abdZDa/fxHFCLN4tjBMnW1TRqN61GuwE40Bg8wkc9+9YgEFrVo/W9/wAFA=="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "tail_logs",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xvy0j5h5knc5f1ch3z2ve",
+      "created_at": "2026-08-29T14:13:10.301Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 56508,
+        "output_tokens": 152,
+        "cache_read_tokens": 48912,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 50940
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1074087",
+      "content": "# 15 of 4711 lines from data/logs/gateway.jsonl (most recent 15)\n{\"ts\":\"2026-08-29T14:13:09.570Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"bf8048b4-2381-4db9-b5c3-2e981bdfdf34\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":93.2}\n{\"ts\":\"2026-08-29T14:13:09.642Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"a45c26e9-2e78-4af9-9c1e-4c10aaf2f24e\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":88.7}\n{\"ts\":\"2026-08-29T14:13:09.664Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8cfaeea8-e395-42fc-ae92-d5ea6964c5b4\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"8cfaeea8-e395-42fc-ae92-d5ea6964c5b4\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-396\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":17.79}\"}\n{\"ts\":\"2026-08-29T14:13:09.744Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"9153e6a0-3f34-4db6-b7ea-10d8c6ac9119\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"9153e6a0-3f34-4db6-b7ea-10d8c6ac9119\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-119\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":45.84}\"}\n{\"ts\":\"2026-08-29T14:13:09.749Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"8cfaeea8-e395-42fc-ae92-d5ea6964c5b4\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":86.5}\n{\"ts\":\"2026-08-29T14:13:09.798Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"9153e6a0-3f34-4db6-b7ea-10d8c6ac9119\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":55.6}\n{\"ts\":\"2026-08-29T14:13:09.831Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"6b54c209-aa77-4836-aaea-93f679eabc73\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"6b54c209-aa77-4836-aaea-93f679eabc73\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-52\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":49.88}\"}\n{\"ts\":\"2026-08-29T14:13:09.905Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"6b54c209-aa77-4836-aaea-93f679eabc73\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":75.3}\n{\"ts\":\"2026-08-29T14:13:09.951Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"43ead84a-b0fc-49d9-8c11-86c08ba5944f\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"43ead84a-b0fc-49d9-8c11-86c08ba5944f\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-20\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":27.95}\"}\n{\"ts\":\"2026-08-29T14:13:10.036Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"66845490-1a8e-441a-9755-028b8b5e0d91\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"66845490-1a8e-441a-9755-028b8b5e0d91\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-396\\\",\\\"card_class\\\":\\\"standard\\\"}\"}\n{\"ts\":\"2026-08-29T14:13:10.043Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"66845490-1a8e-441a-9755-028b8b5e0d91\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":400,\"latency_ms\":8.4}\n{\"ts\":\"2026-08-29T14:13:10.052Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"43ead84a-b0fc-49d9-8c11-86c08ba5944f\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":102.7}\n{\"ts\":\"2026-08-29T14:13:10.160Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"295b5073-ec36-4fe5-a622-24bea7f9ead2\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"295b5073-ec36-4fe5-a622-24bea7f9ead2\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"USD\\\",\\\"customer\\\":\\\"cust-214\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":59.4}\"}\n{\"ts\":\"2026-08-29T14:13:10.226Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"295b5073-ec36-4fe5-a622-24bea7f9ead2\",\"msg\":\"request completed\",\"route\":\"/checkout\",\"status\":200,\"latency_ms\":67.5}\n{\"ts\":\"2026-08-29T14:13:10.254Z\",\"service\":\"gateway\",\"instance\":\"gateway\",\"version\":\"v1\",\"level\":\"INFO\",\"req_id\":\"bf7c4122-0871-46e1-bfce-f7598b56abbc\",\"msg\":\"request captured\",\"kind\":\"request_capture\",\"method\":\"POST\",\"path\":\"/checkout\",\"headers\":{\"x-request-id\":\"bf7c4122-0871-46e1-bfce-f7598b56abbc\",\"x-client-class\":\"standard\",\"user-agent\":\"spyglass-loadgen/1.0\",\"content-type\":\"application/json\"},\"body\":\"{\\\"currency\\\":\\\"EUR\\\",\\\"customer\\\":\\\"cust-489\\\",\\\"card_class\\\":\\\"standard\\\",\\\"amount\\\":24.41}\"}\n",
+      "type": "tool.response",
+      "id": "01m16xw0h9pmj8sfb17wxgtrx9",
+      "created_at": "2026-08-29T14:13:10.313Z",
+      "thread_id": "main"
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_1055277",
+          "type": "function",
+          "function": {
+            "name": "http_request",
+            "arguments": "{\"path\":\"/checkout\",\"method\":\"POST\",\"headers\":[\"content-type: application/json\"],\"instance\":\"gateway\",\"body\":\"{\\\"amount\\\": 50, \\\"currency\\\": \\\"EUR\\\", \\\"customer\\\": \\\"cust-test\\\", \\\"card_class\\\": \\\"standard\\\"}\"}"
+          },
+          "provider_specific_fields": {
+            "thought_signature": "EogDCoUDARFNMg80+OpH+hiD9XtaPypZrPE4df0mi6Thgpn2AKo7eYwe3kCKQQqBEXNa58pYLaJXi1d74usI3xI7UWSymnewHDMKuMsSIdOY/tt5ZnbC5Pz62nhbpGj5ax2yXlBAMTfTOaOkUBi2J2ydal1QBbwD2ptT6x46aBa9hlvQrCDBv0/Ohsq/OhGDdOWiy7D23qsLwXmS1ixsCZg7LiurldsXhyn38RqQKizyzd0z9fyiYMsnrbNteOoPJqXLRkygZLC6zRyF4LN3dlaY9LOYqHk2rkLK14fIvzs6j4QVuH2rDI55iH4rfXkyhSX5NrdLIAdBiwBmXO/A1ex/9jdifRzAHfTKyc/70IU5dtCsf09x/ejuzA+wSJoBcqJvgr9bgVIjL7Z02HPD8zzU/S2YRfPHPVn0ZdV7t4cWt6kofelqD4+4nooeEPEwtxUkODOtgtPcW4Z9SOfmtIfGCaUWI8Y+fIQTR7D55tpkTl3EQG8bGuugY4+U/L4Dr5FioxVG5sESMl0="
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "http_request",
+            "server_id": "spyglass-rawtools",
+            "server_name": "spyglass-rawtools"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m16xw0hec7qn5mysw5kh8yaz",
+      "created_at": "2026-08-29T14:13:12.453Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 58997,
+        "output_tokens": 138,
+        "cache_read_tokens": 48914,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 53429
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_1055277",
+      "content": "HTTP 200 (68.6 ms)\ncontent-type: application/json\nx-request-id: 2cfff935-dd1f-4d4c-80dd-81521b036938\n\n{\"order_id\":\"ord_4ef97b278d15\",\"charge_id\":\"ch_4ef97b278d155aee\",\"payments_version\":\"v1\"}\n",
+      "type": "tool.response",
+      "id": "01m16xw2pmvpjbs7w1hqjkp0y9",
+      "created_at": "2026-08-29T14:13:12.532Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "### RCA & Incident Investigation Report\n\n#### 1. Symptom Confirmation & Overview\nThe alert fired due to elevated 5xx error rates on `gateway` at `/checkout`. \nMetrics gathered via `get_metric` on `gateway` confirmed 187 HTTP 502 Bad Gateway responses on `/checkout` starting around `2026-08-29T14:10:59.660Z` (Unix timestamp `1788012659`).\n\n#### 2. Root Cause Analysis\n- **Evidence E1 (Metrics)**: Prometheus `/metrics` on `gateway` showed 187 HTTP 502 responses for `/checkout`, while `payments-v2` recorded 188 HTTP 500 internal server errors for `/charge`.\n- **Evidence E2 (Deployment Log)**: Journal entry `D-2` showed `payments` was deployed to version `v2` from `v1` at `2026-08-29T14:10:58.903Z` by `deploy-bot`.\n- **Evidence E3 (Error Stack Traces)**: Log entries from `payments-v2` (`grep_logs`) revealed repeated exceptions:\n  ```json\n  \"msg\": \"payment validation failed: unsupported currency EUR req=1ca691e1-dda7-433a-b334-5e5bdca3aa0a\"\n  \"stack\": \"File \\\"/app/payments/app.py\\\", line 81, in charge\\n amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n raise UnsupportedCurrency(\"\n  ```\n  `payments-v2`'s `validate_v2` function throws `UnsupportedCurrency` (HTTP 500) whenever non-USD currencies (such as `EUR`, `GBP`, `JPY`) are processed.\n- **Evidence E4 (Direct Endpoint Verification)**: Calling POST `/charge` with `{\"amount\": 50, \"currency\": \"EUR\"}` via `http_request` against `payments-v1` returned `HTTP 200`, whereas calling `payments-v2` returned `HTTP 500` (`UnsupportedCurrency`).\n\nWhen `payments-v2` returned HTTP 500 to `orders`, `orders` responded to `gateway` with HTTP 502 Bad Gateway, causing customer checkouts for non-USD currencies to fail.\n\n---\n\n#### 3. Action Taken\n1. **Proposal**: Recorded rollback proposal for `payments` to version `v1` using `propose_rollback` (Proposal ID: `45788987-f01d-49c9-a8e8-72ad85692767`) with justifications `[\"E1\", \"E2\", \"E3\", \"E4\"]`.\n2. **Execution**: Executed `rollback`, routing traffic for `payments` back to `v1` (deploy ID `D-3`).\n\n---\n\n#### 4. Verification Post-Action\n- Metric sampling on `gateway` post-rollback confirmed 0 new HTTP 502 errors over a 16-second window (`requests_total{status=\"502\"}` remained constant at 207 while `status=\"200\"` grew from 1785 to 1949).\n- A synthetic checkout request with `currency: \"EUR\"` sent to `gateway` `/checkout` succeeded with `HTTP 200` (`payments_version: \"v1\"`).\n\n---\n\n```verdict\nculprit_service: payments\nculprit_change: D-2\ncause: payments v2 validation function (validate_v2) raises UnsupportedCurrency HTTP 500 for non-USD currencies (EUR, GBP, JPY), causing orders to fail with HTTP 502 on checkout.\naction: rollback\nevidence_label: causal\n```",
+      "type": "model.message",
+      "id": "01m16xw2pttpk9gbcgact90bfn",
+      "created_at": "2026-08-29T14:13:20.230Z",
+      "thread_id": "main",
+      "finish_reason": "stop",
+      "usage": {
+        "input_tokens": 59265,
+        "output_tokens": 1394,
+        "cache_read_tokens": 57058,
+        "input_tokens_breakdown": {
+          "harness": 2941,
+          "skills": 0,
+          "instructions": 965,
+          "tool_definitions": 1662,
+          "messages": 53697
+        }
+      }
+    },
+    {
+      "type": "turn.done",
+      "id": "01m16xwa7s2bw2secqeyev9jh7",
+      "created_at": "2026-08-29T14:13:20.249Z",
+      "state": {
+        "status": "done",
+        "output": {
+          "content": "### RCA & Incident Investigation Report\n\n#### 1. Symptom Confirmation & Overview\nThe alert fired due to elevated 5xx error rates on `gateway` at `/checkout`. \nMetrics gathered via `get_metric` on `gateway` confirmed 187 HTTP 502 Bad Gateway responses on `/checkout` starting around `2026-08-29T14:10:59.660Z` (Unix timestamp `1788012659`).\n\n#### 2. Root Cause Analysis\n- **Evidence E1 (Metrics)**: Prometheus `/metrics` on `gateway` showed 187 HTTP 502 responses for `/checkout`, while `payments-v2` recorded 188 HTTP 500 internal server errors for `/charge`.\n- **Evidence E2 (Deployment Log)**: Journal entry `D-2` showed `payments` was deployed to version `v2` from `v1` at `2026-08-29T14:10:58.903Z` by `deploy-bot`.\n- **Evidence E3 (Error Stack Traces)**: Log entries from `payments-v2` (`grep_logs`) revealed repeated exceptions:\n  ```json\n  \"msg\": \"payment validation failed: unsupported currency EUR req=1ca691e1-dda7-433a-b334-5e5bdca3aa0a\"\n  \"stack\": \"File \\\"/app/payments/app.py\\\", line 81, in charge\\n amount, currency = (validate_v2 if VERSION == \\\"v2\\\" else validate_v1)(body)\\n File \\\"/app/payments/app.py\\\", line 70, in validate_v2\\n raise UnsupportedCurrency(\"\n  ```\n  `payments-v2`'s `validate_v2` function throws `UnsupportedCurrency` (HTTP 500) whenever non-USD currencies (such as `EUR`, `GBP`, `JPY`) are processed.\n- **Evidence E4 (Direct Endpoint Verification)**: Calling POST `/charge` with `{\"amount\": 50, \"currency\": \"EUR\"}` via `http_request` against `payments-v1` returned `HTTP 200`, whereas calling `payments-v2` returned `HTTP 500` (`UnsupportedCurrency`).\n\nWhen `payments-v2` returned HTTP 500 to `orders`, `orders` responded to `gateway` with HTTP 502 Bad Gateway, causing customer checkouts for non-USD currencies to fail.\n\n---\n\n#### 3. Action Taken\n1. **Proposal**: Recorded rollback proposal for `payments` to version `v1` using `propose_rollback` (Proposal ID: `45788987-f01d-49c9-a8e8-72ad85692767`) with justifications `[\"E1\", \"E2\", \"E3\", \"E4\"]`.\n2. **Execution**: Executed `rollback`, routing traffic for `payments` back to `v1` (deploy ID `D-3`).\n\n---\n\n#### 4. Verification Post-Action\n- Metric sampling on `gateway` post-rollback confirmed 0 new HTTP 502 errors over a 16-second window (`requests_total{status=\"502\"}` remained constant at 207 while `status=\"200\"` grew from 1785 to 1949).\n- A synthetic checkout request with `currency: \"EUR\"` sent to `gateway` `/checkout` succeeded with `HTTP 200` (`payments_version: \"v1\"`).\n\n---\n\n```verdict\nculprit_service: payments\nculprit_change: D-2\ncause: payments v2 validation function (validate_v2) raises UnsupportedCurrency HTTP 500 for non-USD currencies (EUR, GBP, JPY), causing orders to fail with HTTP 502 on checkout.\naction: rollback\nevidence_label: causal\n```",
+          "type": "model.message",
+          "id": "01m16xw2pttpk9gbcgact90bfn",
+          "created_at": "2026-08-29T14:13:20.230Z",
+          "thread_id": "main",
+          "finish_reason": "stop",
+          "usage": {
+            "input_tokens": 59265,
+            "output_tokens": 1394,
+            "cache_read_tokens": 57058,
+            "input_tokens_breakdown": {
+              "harness": 2941,
+              "skills": 0,
+              "instructions": 965,
+              "tool_definitions": 1662,
+              "messages": 53697
+            }
+          }
+        },
+        "required_actions": [],
+        "completed_at": "2026-08-29T14:13:20.249Z",
+        "metrics": {
+          "total_input_tokens": 391542,
+          "total_output_tokens": 2035,
+          "total_tokens": 393577,
+          "total_cache_read_tokens": 350580,
+          "total_reasoning_tokens": 954
+        }
+      },
+      "thread_id": null
+    }
+  ]
+}

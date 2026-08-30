@@ -34,6 +34,7 @@ INSTANCE = os.environ.get("INSTANCE_NAME", SERVICE)
 VERSION = os.environ.get("SERVICE_VERSION", "v1")
 LOG_DIR = Path(os.environ.get("SPYGLASS_LOG_DIR", "/var/log/spyglass"))
 DEPLOY_STATE = Path(os.environ.get("SPYGLASS_DEPLOY_STATE", "/deploy/current.json"))
+KNOB_DIR = Path(os.environ.get("SPYGLASS_KNOB_DIR", "/knobs"))
 UNLOGGED_PATHS = {"/health", "/metrics"}
 
 req_id_var: ContextVar[str] = ContextVar("req_id", default="-")
@@ -45,7 +46,7 @@ def now_iso() -> str:
 
 # ---------------------------------------------------------------- logging
 _EXTRA_KEYS = ("route", "status", "latency_ms", "deploy_id", "kind", "upstream",
-               "upstream_version", "method", "path", "headers", "body")
+               "upstream_version", "method", "path", "headers", "body", "replay", "detail")
 
 
 class JsonFormatter(logging.Formatter):
@@ -142,6 +143,34 @@ def current_deploy(service: str) -> dict:
     return {"version": entry.get("version", "v1"), "deploy_id": entry.get("deploy_id")}
 
 
+_knob_cache: dict = {}
+
+
+def knob(name: str) -> dict:
+    """Scenario knobs: /knobs/<name>.json, read per request, cached on mtime.
+
+    Knobs are how a scenario changes the *environment* without a change
+    event -- the gateway's latency blip (S2's decoy) and the fraud vendor's
+    degradation (S6). They are not telemetry: no tool in either benchmark
+    condition reads this directory, and the services never log them. An
+    absent or malformed file means "no knob".
+    """
+    path = KNOB_DIR / f"{name}.json"
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        _knob_cache.pop(name, None)
+        return {}
+    c = _knob_cache.get(name)
+    if c is None or c[0] != st.st_mtime_ns:
+        try:
+            c = (st.st_mtime_ns, json.loads(path.read_text()))
+        except (OSError, json.JSONDecodeError):
+            c = (st.st_mtime_ns, {})
+        _knob_cache[name] = c
+    return c[1] if isinstance(c[1], dict) else {}
+
+
 # ---------------------------------------------------------------- app wiring
 def install(app: FastAPI) -> None:
     """Health, metrics, and the observe middleware. Call once per service."""
@@ -160,6 +189,10 @@ def install(app: FastAPI) -> None:
         if path in UNLOGGED_PATHS:
             return await call_next(request)
         rid = request.headers.get("x-request-id") or str(uuid.uuid4())
+        # Synthetic replay traffic (the evidence engine's causal check) says
+        # so on its request line, so a reader of the raw log can tell an
+        # experiment from a customer. The engine also keys off the req_id.
+        replay = request.headers.get("x-spyglass-replay")
         token = req_id_var.set(rid)
         own = current_deploy(SERVICE)["deploy_id"]
         t0 = time.perf_counter()
@@ -170,7 +203,7 @@ def install(app: FastAPI) -> None:
             # system: ERROR level, the exception's own message, a stack.
             ms = round((time.perf_counter() - t0) * 1000, 1)
             log.error(str(exc) or exc.__class__.__name__, exc_info=True,
-                      extra={"route": path, "status": 500, "latency_ms": ms, "deploy_id": own})
+                      extra={"route": path, "status": 500, "latency_ms": ms, "deploy_id": own, "replay": replay})
             REQUESTS.labels(SERVICE, path, "500").inc()
             ERRORS.labels(SERVICE, path).inc()
             LATENCY.labels(SERVICE, path).observe(ms)
@@ -183,9 +216,9 @@ def install(app: FastAPI) -> None:
         LATENCY.labels(SERVICE, path).observe(ms)
         if status >= 500:
             ERRORS.labels(SERVICE, path).inc()
-            log.error("request failed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own})
+            log.error("request failed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own, "replay": replay})
         else:
-            log.info("request completed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own})
+            log.info("request completed", extra={"route": path, "status": status, "latency_ms": ms, "deploy_id": own, "replay": replay})
         response.headers["x-request-id"] = rid
         req_id_var.reset(token)
         return response

@@ -9,4 +9,5 @@ COPY gateway ./gateway
 COPY orders ./orders
 COPY payments ./payments
 COPY loadgen ./loadgen
+COPY fraudcheck ./fraudcheck
 ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app
